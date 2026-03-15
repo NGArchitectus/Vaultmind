@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const IS_DEMO = false;
-const API_BASE = "https://vaultmind-production-5775.up.railway.app";
+const API_BASE = "RAILWAY_URL_PLACEHOLDER";
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const MAX_PAGES_PER_CHUNK = 90;
 
@@ -380,12 +380,61 @@ export default function App() {
       }));
 
       const focusSections = (selection.selected || []).map(s => s.sections?.join(", ")).filter(Boolean).join("; ");
-      const answerPrompt = `Answer the question thoroughly using ONLY information from the provided documents.\n\nSTYLE: ${selection.styleNotes || "professional, structured"}\nFOCUS SECTIONS: ${focusSections || "all relevant sections"}\n\nFORMATTING:\n- Use ## and ### headings\n- Use | tables | for structured data\n- Use bullet points for lists\n- Use **bold** for key terms\n- Cite source documents\n\nQuestion: ${q}`;
+      const answerPrompt = `You are an expert building regulations consultant answering a question using the provided regulatory documents.
+
+QUESTION: ${q}
+
+FOCUS SECTIONS: ${focusSections || "all relevant sections"}
+
+RESPONSE STRUCTURE — follow this exact structure every time:
+
+## Summary
+Write 2-4 sentences giving a direct, concise answer to the question in plain English. This should stand alone as a complete answer for someone who needs a quick response.
+
+---
+
+## Detailed Analysis
+
+Write a thorough breakdown of the answer, structured using the same headings, numbering and terminology used in the source documents. Use:
+- **Bullet points** for lists of requirements or criteria
+- **Tables** where comparing multiple requirements, dimensions, specifications or options
+- **Sub-headings (###)** to organise by topic or document section
+- **Bold** for defined terms, regulation numbers and key requirements
+
+For each point made, explain the reasoning and regulatory basis in plain English alongside the technical requirement.
+
+---
+
+## Sources & Citations
+
+For every point made in the Detailed Analysis, provide:
+- Document name
+- Section number and heading
+- Page number
+- **Exact wording** from the regulation in quote marks
+
+Format each citation as:
+> **[Document Name]** | Section [X.X] — [Heading] | Page [X]
+> *"[exact wording from document]"*
+
+---
+
+## Contradictions & Conflicts
+If any contradictions, conflicts or ambiguities are found between sections or documents, list them clearly here. If none found, write "No contradictions identified."
+
+---
+
+STYLE REQUIREMENTS:
+- Write in the same formal, technical style as the source building regulations documents
+- Use the same terminology, defined terms and numbering conventions as the source material
+- Be precise and unambiguous — this is regulatory guidance
+- Do not add information not found in the documents
+- If the documents do not contain enough information to answer fully, state this clearly`;
 
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
-        "You are an expert research analyst. Answer questions by synthesising document content. Match the style of source documents.",
-        2000
+        "You are an expert building regulations consultant. Answer questions by carefully analysing the provided regulatory documents. Always match the formal technical style of the source material. Be precise, thorough and cite exact wording.",
+        4000
       );
 
       setProgress(p => ({ ...p, answer: 100 }));
