@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 // ── API config ────────────────────────────────────────────────────────────────
 // In Replit: calls your secure backend proxy at /api/claude (API key stays server-side)
 // In Claude.ai demo mode: returns realistic mock data so you can test the UI
-const IS_DEMO = false;
+const IS_DEMO = typeof window !== "undefined" && !window.location.hostname.includes("replit") && !window.location.hostname.includes("localhost");
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -244,35 +244,65 @@ export default function App() {
 
     setStage("indexing");
     setProgress({ index: 0, select: 0, read: 0, answer: 0 });
-    setStatusMsg("Scanning document structure — contents, headings, titles…");
+    setStatusMsg("Scanning document structure — this may take a minute for large files…");
     setAnswer(null);
 
     try {
-      const contentBlocks = IS_DEMO ? [] : readyPdfs.flatMap((pdf) => [
-        { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.base64 }, title: pdf.name },
-      ]);
+      const allDocuments = [];
 
-      setProgress((p) => ({ ...p, index: 40 }));
+      for (let i = 0; i < readyPdfs.length; i++) {
+        const pdf = readyPdfs[i];
+        setStatusMsg(`Scanning document ${i + 1} of ${readyPdfs.length}: ${pdf.name}…`);
+        setProgress((p) => ({ ...p, index: Math.round((i / readyPdfs.length) * 80) }));
 
-      const indexText = await callClaude(
-        [{ role: "user", content: [...contentBlocks, { type: "text", text: 'Extract ONLY: document titles, all section headings, sub-headings, table of contents entries, figure/table captions. Output as structured JSON: {"documents": [{"name": "...", "headings": [{"level": 1, "title": "...", "pageHint": "..."}]}]}. No other text.' }] }],
-        "You are a document indexer. Extract structural metadata only — headings, titles, ToC. Return pure JSON.",
-        2000
-      );
+        if (IS_DEMO) {
+          allDocuments.push({ name: pdf.name, headings: [] });
+          continue;
+        }
 
-      setProgress((p) => ({ ...p, index: 100 }));
+        let docIndex = { name: pdf.name, headings: [] };
+        try {
+          const contentBlocks = [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.base64 }, title: pdf.name },
+            { type: "text", text: 'Extract ALL structural metadata from this document: title, every section heading, sub-heading, chapter name, table of contents entry, figure and table caption. Be thorough. Output ONLY valid JSON, no other text: {"name": "document name", "headings": [{"level": 1, "title": "heading text", "pageHint": "page or section"}]}' }
+          ];
 
-      let indexData;
-      try {
-        const clean = indexText.replace(/```json|```/g, "").trim();
-        indexData = JSON.parse(clean);
-      } catch {
-        indexData = { documents: readyPdfs.map((p) => ({ name: p.name, headings: [] })), raw: indexText };
+          const indexText = await callClaude(
+            [{ role: "user", content: contentBlocks }],
+            "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown fences, no explanation.",
+            4000
+          );
+
+          // Robust JSON extraction — three fallback strategies
+          let parsed = null;
+          const clean = indexText.replace(/```json|```/g, "").trim();
+
+          try { parsed = JSON.parse(clean); } catch {}
+
+          if (!parsed) {
+            const match = clean.match(/\{[\s\S]*\}/);
+            if (match) try { parsed = JSON.parse(match[0]); } catch {}
+          }
+
+          if (!parsed) {
+            const hMatch = clean.match(/"headings"\s*:\s*(\[[\s\S]*?\])/);
+            if (hMatch) try { parsed = { name: pdf.name, headings: JSON.parse(hMatch[1]) }; } catch {}
+          }
+
+          if (parsed) docIndex = { name: pdf.name, headings: parsed.headings || [] };
+        } catch (e) {
+          console.warn(`Could not index ${pdf.name}:`, e);
+        }
+
+        allDocuments.push(docIndex);
       }
 
-      setVaults((prev) => prev.map((v) => v.id === vault.id ? { ...v, index: indexData, pdfs: IS_DEMO ? readyPdfs : readyPdfs } : v));
+      setProgress((p) => ({ ...p, index: 100 }));
+      const indexData = { documents: allDocuments };
+      setVaults((prev) => prev.map((v) => v.id === vault.id ? { ...v, index: indexData, pdfs: readyPdfs } : v));
       setStage("done-index");
-      setStatusMsg(IS_DEMO ? "✓ Demo vault indexed — ask a question to see a sample answer." : "✓ Vault indexed — ready for questions.");
+      const totalHeadings = allDocuments.reduce((sum, d) => sum + (d.headings?.length || 0), 0);
+      setStatusMsg(IS_DEMO ? "✓ Demo vault indexed — ask a question to see a sample answer." : `✓ Vault indexed — ${totalHeadings} sections mapped across ${allDocuments.length} document${allDocuments.length !== 1 ? "s" : ""}. Ready for questions.`);
     } catch (err) {
       setStage(null);
       setStatusMsg("Indexing failed: " + err.message);
