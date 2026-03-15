@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const IS_DEMO = false;
-const API_BASE = "vaultmind-production-5775.up.railway.app";
+const API_BASE = "https://vaultmind-production-5775.up.railway.app";
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const MAX_PAGES_PER_CHUNK = 90;
 
