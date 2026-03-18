@@ -442,86 +442,143 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
         return pages;
       };
 
-      // Build a map of which pages to extract per document
-      const docPageMap = {};
+      // Build a ranked list of all sections across all docs, sorted by probability (highest first)
+      // This ensures the 90-page budget is spent on the MOST relevant pages first
+      const HARD_PAGE_BUDGET = 90;
+      const allScoredSections = [];
+
       (scoring.selectedDocs || []).forEach(selectedDoc => {
         const matchedDoc = contentsData.find(d =>
           d.pdf.name.includes(selectedDoc.docName) || selectedDoc.docName.includes(d.pdf.name)
         );
         if (!matchedDoc) return;
-        const key = matchedDoc.pdf.name;
-        if (!docPageMap[key]) docPageMap[key] = { contentsDoc: matchedDoc, pages: new Set() };
         (selectedDoc.sections || []).forEach(section => {
           const parsed = parsePageNums(section.pageHint, 9999);
-          // Add a 2-page buffer around each identified page to catch overflow
-          parsed.forEach(p => {
-            for (let i = Math.max(1, p - 1); i <= p + 2; i++) docPageMap[key].pages.add(i);
-          });
+          if (parsed.size > 0) {
+            allScoredSections.push({
+              docName: matchedDoc.pdf.name,
+              contentsDoc: matchedDoc,
+              pages: parsed,
+              probability: section.probability || 0,
+              heading: section.heading,
+            });
+          }
         });
       });
 
-      // Fallback: if no pages identified, use first 2 docs fully
-      if (Object.keys(docPageMap).length === 0) {
-        contentsData.slice(0, 2).forEach(d => {
-          docPageMap[d.pdf.name] = { contentsDoc: d, pages: new Set() }; // empty = use full doc
+      // Sort by probability descending — highest relevance first
+      allScoredSections.sort((a, b) => b.probability - a.probability);
+
+      // Fill page budget from highest probability sections downward
+      const docPageMap = {};
+      let budgetRemaining = HARD_PAGE_BUDGET;
+
+      for (const section of allScoredSections) {
+        if (budgetRemaining <= 0) break;
+
+        const key = section.docName;
+        if (!docPageMap[key]) docPageMap[key] = { contentsDoc: section.contentsDoc, pages: new Set() };
+
+        // Add pages with 1-page buffer, but only until budget is exhausted
+        const pagesToAdd = [];
+        section.pages.forEach(p => {
+          for (let i = Math.max(1, p - 1); i <= p + 1; i++) {
+            if (!docPageMap[key].pages.has(i)) pagesToAdd.push(i);
+          }
         });
+
+        // Only add pages if we have budget remaining
+        for (const p of pagesToAdd) {
+          if (budgetRemaining <= 0) break;
+          docPageMap[key].pages.add(p);
+          budgetRemaining--;
+        }
       }
 
+      // Fallback: if no pages identified, use first 30 pages of most relevant doc
+      if (Object.keys(docPageMap).length === 0 && contentsData.length > 0) {
+        const fallbackDoc = contentsData[0];
+        docPageMap[fallbackDoc.pdf.name] = { contentsDoc: fallbackDoc, pages: new Set() };
+        for (let i = 1; i <= 30; i++) docPageMap[fallbackDoc.pdf.name].pages.add(i);
+      }
+
+      console.log(`Page budget used: ${HARD_PAGE_BUDGET - budgetRemaining}/${HARD_PAGE_BUDGET} pages across ${Object.keys(docPageMap).length} documents`);
+
+      // Load pdf-lib once before extraction loop
+      if (!window.PDFLib) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+          script.onload = resolve; script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const { PDFDocument } = window.PDFLib;
+
       // Extract specific pages from each document using pdf-lib
+      // Pages have already been ranked by probability and capped at HARD_PAGE_BUDGET
       const docBlocks = [];
       let totalPagesExtracted = 0;
 
       for (const [docName, { contentsDoc, pages }] of Object.entries(docPageMap)) {
         setStatusMsg(`Pass 2/3 · Extracting pages from ${docName}…`);
         try {
-          if (!window.PDFLib) {
-            await new Promise((resolve, reject) => {
-              const script = document.createElement("script");
-              script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
-              script.onload = resolve; script.onerror = reject;
-              document.head.appendChild(script);
-            });
-          }
-          const { PDFDocument } = window.PDFLib;
           const pdfBytes = Uint8Array.from(atob(contentsDoc.base64), c => c.charCodeAt(0));
           const srcDoc = await PDFDocument.load(pdfBytes);
           const totalPages = srcDoc.getPageCount();
 
-          let pageIndices;
-          if (pages.size === 0) {
-            // No specific pages — use whole doc (capped at 90 pages)
-            pageIndices = Array.from({ length: Math.min(totalPages, 90) }, (_, i) => i);
-          } else {
-            // Convert 1-based page numbers to 0-based indices, filter valid
-            pageIndices = Array.from(pages)
-              .map(p => p - 1)
-              .filter(i => i >= 0 && i < totalPages)
-              .sort((a, b) => a - b);
-          }
+          // Convert 1-based page numbers to 0-based indices, filter valid
+          const pageIndices = Array.from(pages)
+            .map(p => p - 1)
+            .filter(i => i >= 0 && i < totalPages)
+            .sort((a, b) => a - b);
 
-          // Cap at 90 pages per document to stay within Anthropic limit
-          if (pageIndices.length > 90) pageIndices = pageIndices.slice(0, 90);
+          if (pageIndices.length === 0) continue;
 
           const extractedDoc = await PDFDocument.create();
           const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
           copiedPages.forEach(p => extractedDoc.addPage(p));
           const extractedBytes = await extractedDoc.save();
-          const extractedBase64 = btoa(String.fromCharCode(...extractedBytes));
+
+          // Convert to base64 safely for large files
+          const chunkSize = 8192;
+          let extractedBase64 = "";
+          for (let i = 0; i < extractedBytes.length; i += chunkSize) {
+            extractedBase64 += btoa(String.fromCharCode(...extractedBytes.slice(i, i + chunkSize)));
+          }
 
           totalPagesExtracted += pageIndices.length;
           docBlocks.push({
             type: "document",
             source: { type: "base64", media_type: "application/pdf", data: extractedBase64 },
-            title: `${docName} (pages: ${pageIndices.map(i => i + 1).join(", ")})`,
+            title: `${docName} — pages ${pageIndices.map(i => i + 1).join(", ")}`,
           });
         } catch (e) {
-          console.warn(`Page extraction failed for ${docName}, using full doc:`, e);
-          // Fallback: use full doc if extraction fails
-          docBlocks.push({
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: contentsDoc.base64 },
-            title: docName,
-          });
+          console.warn(`Page extraction failed for ${docName}:`, e);
+          // Fallback: send first 20 pages only — NEVER send full PDF
+          try {
+            const pdfBytes = Uint8Array.from(atob(contentsDoc.base64), c => c.charCodeAt(0));
+            const srcDoc = await PDFDocument.load(pdfBytes);
+            const fallbackCount = Math.min(20, srcDoc.getPageCount(), HARD_PAGE_BUDGET - totalPagesExtracted);
+            if (fallbackCount <= 0) continue;
+            const fallbackDoc = await PDFDocument.create();
+            const fallbackPages = await fallbackDoc.copyPages(srcDoc, Array.from({ length: fallbackCount }, (_, i) => i));
+            fallbackPages.forEach(p => fallbackDoc.addPage(p));
+            const fallbackBytes = await fallbackDoc.save();
+            let fallbackBase64 = "";
+            const chunkSize = 8192;
+            for (let i = 0; i < fallbackBytes.length; i += chunkSize) {
+              fallbackBase64 += btoa(String.fromCharCode(...fallbackBytes.slice(i, i + chunkSize)));
+            }
+            totalPagesExtracted += fallbackCount;
+            docBlocks.push({
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: fallbackBase64 },
+              title: `${docName} — first ${fallbackCount} pages (fallback)`,
+            });
+          } catch (e2) {
+            console.error(`Complete extraction failure for ${docName}:`, e2);
+          }
         }
       }
 
