@@ -444,7 +444,7 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
 
       // Build a ranked list of all sections across all docs, sorted by probability (highest first)
       // This ensures the 90-page budget is spent on the MOST relevant pages first
-      const HARD_PAGE_BUDGET = 90;
+      const HARD_PAGE_BUDGET = 10;
       const allScoredSections = [];
 
       (scoring.selectedDocs || []).forEach(selectedDoc => {
@@ -479,12 +479,10 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
         const key = section.docName;
         if (!docPageMap[key]) docPageMap[key] = { contentsDoc: section.contentsDoc, pages: new Set() };
 
-        // Add pages with 1-page buffer, but only until budget is exhausted
+        // Add pages — no buffer, every page counts with tight budget
         const pagesToAdd = [];
         section.pages.forEach(p => {
-          for (let i = Math.max(1, p - 1); i <= p + 1; i++) {
-            if (!docPageMap[key].pages.has(i)) pagesToAdd.push(i);
-          }
+          if (!docPageMap[key].pages.has(p)) pagesToAdd.push(p);
         });
 
         // Only add pages if we have budget remaining
@@ -499,7 +497,7 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
       if (Object.keys(docPageMap).length === 0 && contentsData.length > 0) {
         const fallbackDoc = contentsData[0];
         docPageMap[fallbackDoc.pdf.name] = { contentsDoc: fallbackDoc, pages: new Set() };
-        for (let i = 1; i <= 30; i++) docPageMap[fallbackDoc.pdf.name].pages.add(i);
+        for (let i = 1; i <= 10; i++) docPageMap[fallbackDoc.pdf.name].pages.add(i);
       }
 
       console.log(`Page budget used: ${HARD_PAGE_BUDGET - budgetRemaining}/${HARD_PAGE_BUDGET} pages across ${Object.keys(docPageMap).length} documents`);
