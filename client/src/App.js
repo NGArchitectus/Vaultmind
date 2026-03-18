@@ -527,79 +527,43 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
 
       console.log(`Page budget used: ${HARD_PAGE_BUDGET - budgetRemaining}/${HARD_PAGE_BUDGET} pages across ${Object.keys(docPageMap).length} documents`);
 
-      // Load pdf-lib once before extraction loop
-      if (!window.PDFLib) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
-          script.onload = resolve; script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-      const { PDFDocument } = window.PDFLib;
-
-      // Extract specific pages from each document using pdf-lib
-      // Pages have already been ranked by probability and capped at HARD_PAGE_BUDGET
+      // Extract specific pages server-side (reliable binary handling)
       const docBlocks = [];
       let totalPagesExtracted = 0;
 
       for (const [docName, { contentsDoc, pages }] of Object.entries(docPageMap)) {
         setStatusMsg(`Pass 2/3 · Extracting pages from ${docName}…`);
+        const pageList = Array.from(pages).sort((a, b) => a - b);
+        if (pageList.length === 0) continue;
+
         try {
-          const pdfBytes = Uint8Array.from(atob(contentsDoc.base64), c => c.charCodeAt(0));
-          const srcDoc = await PDFDocument.load(pdfBytes);
-          const totalPages = srcDoc.getPageCount();
-
-          // Convert 1-based page numbers to 0-based indices, filter valid
-          const pageIndices = Array.from(pages)
-            .map(p => p - 1)
-            .filter(i => i >= 0 && i < totalPages)
-            .sort((a, b) => a - b);
-
-          if (pageIndices.length === 0) continue;
-
-          const extractedDoc = await PDFDocument.create();
-          const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
-          copiedPages.forEach(p => extractedDoc.addPage(p));
-          const extractedBytes = await extractedDoc.save();
-
-          // Convert to base64 safely using FileReader (handles large PDFs correctly)
-          const extractedBase64 = await new Promise((resolve) => {
-            const blob = new Blob([extractedBytes], { type: "application/pdf" });
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(",")[1]);
-            reader.readAsDataURL(blob);
+          // Send to server for reliable server-side extraction
+          const result = await api("/api/extract-pages", {
+            method: "POST",
+            body: { base64: contentsDoc.base64, pages: pageList }
           });
 
-          totalPagesExtracted += pageIndices.length;
+          totalPagesExtracted += result.pagesExtracted;
           docBlocks.push({
             type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: extractedBase64 },
-            title: `${docName} — pages ${pageIndices.map(i => i + 1).join(", ")}`,
+            source: { type: "base64", media_type: "application/pdf", data: result.base64 },
+            title: `${docName} — pages ${result.pageNumbers.join(", ")}`,
           });
         } catch (e) {
-          console.warn(`Page extraction failed for ${docName}:`, e);
-          // Fallback: send first 20 pages only — NEVER send full PDF
+          console.warn(`Server extraction failed for ${docName}, trying first 10 pages:`, e);
+          // Fallback: ask server for first 10 pages
           try {
-            const pdfBytes = Uint8Array.from(atob(contentsDoc.base64), c => c.charCodeAt(0));
-            const srcDoc = await PDFDocument.load(pdfBytes);
-            const fallbackCount = Math.min(20, srcDoc.getPageCount(), HARD_PAGE_BUDGET - totalPagesExtracted);
-            if (fallbackCount <= 0) continue;
-            const fallbackDoc = await PDFDocument.create();
-            const fallbackPages = await fallbackDoc.copyPages(srcDoc, Array.from({ length: fallbackCount }, (_, i) => i));
-            fallbackPages.forEach(p => fallbackDoc.addPage(p));
-            const fallbackBytes = await fallbackDoc.save();
-            const fallbackBase64 = await new Promise((resolve) => {
-              const blob = new Blob([fallbackBytes], { type: "application/pdf" });
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result.split(",")[1]);
-              reader.readAsDataURL(blob);
+            const fallbackPages = Array.from({ length: Math.min(10, HARD_PAGE_BUDGET - totalPagesExtracted) }, (_, i) => i + 1);
+            if (fallbackPages.length === 0) continue;
+            const result = await api("/api/extract-pages", {
+              method: "POST",
+              body: { base64: contentsDoc.base64, pages: fallbackPages }
             });
-            totalPagesExtracted += fallbackCount;
+            totalPagesExtracted += result.pagesExtracted;
             docBlocks.push({
               type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: fallbackBase64 },
-              title: `${docName} — first ${fallbackCount} pages (fallback)`,
+              source: { type: "base64", media_type: "application/pdf", data: result.base64 },
+              title: `${docName} — first ${result.pagesExtracted} pages (fallback)`,
             });
           } catch (e2) {
             console.error(`Complete extraction failure for ${docName}:`, e2);
