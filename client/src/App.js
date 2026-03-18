@@ -344,99 +344,47 @@ export default function App() {
     setStatusMsg("Pass 1/3 · Reading contents pages and scoring sections…");
 
     try {
-      // ── PASS 1: Read first 10 pages of each PDF (contents + intro) ─────────
-      // Load just the first chunk of each PDF to read contents pages properly
-      const contentsData = [];
-      for (const pdf of pdfs) {
-        setStatusMsg(`Pass 1/3 · Scanning contents: ${pdf.name}…`);
-        try {
-          const pdfData = await api(`/api/vaults/${encodeURIComponent(vault.id)}/pdfs/${encodeURIComponent(pdf.name)}`);
+      // ── PASS 1: Score index only — NO PDFs sent, pure text, very cheap ────────
+      setStatusMsg("Pass 1/3 · Scoring index — identifying relevant sections…");
 
-          // Extract just first 10 pages for contents pass
-          let contentsBase64 = pdfData.base64;
-          try {
-            if (!window.PDFLib) {
-              await new Promise((resolve, reject) => {
-                const script = document.createElement("script");
-                script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
-                script.onload = resolve; script.onerror = reject;
-                document.head.appendChild(script);
-              });
-            }
-            const { PDFDocument } = window.PDFLib;
-            const pdfBytes = Uint8Array.from(atob(pdfData.base64), c => c.charCodeAt(0));
-            const srcDoc = await PDFDocument.load(pdfBytes);
-            const totalPages = srcDoc.getPageCount();
-            const contentsPageCount = Math.min(10, totalPages);
-            const contentsDoc = await PDFDocument.create();
-            const pages = await contentsDoc.copyPages(srcDoc, Array.from({ length: contentsPageCount }, (_, i) => i));
-            pages.forEach(p => contentsDoc.addPage(p));
-            const contentsBytes = await contentsDoc.save();
-            contentsBase64 = btoa(String.fromCharCode(...contentsBytes));
-          } catch (e) {
-            console.warn("Could not extract contents pages, using full PDF:", e);
-          }
-
-          contentsData.push({ pdf, base64: pdfData.base64, contentsBase64, totalPages: 0 });
-        } catch (e) {
-          console.warn(`Could not load ${pdf.name}:`, e);
-        }
-      }
-
+      // Use the stored index text only — no PDFs loaded at all in this pass
+      const indexSummary = JSON.stringify(vaultIndex).slice(0, 12000);
       setProgress(p => ({ ...p, select: 30 }));
 
-      // ── PASS 1b: Probability scoring using contents + full index ───────────
-      setStatusMsg("Pass 1/3 · Probability scoring — identifying highest relevance pages…");
+      const scoringPrompt = `You are an expert building regulations analyst. Using ONLY the document index below, identify which specific sections and pages are most likely to contain the answer to the question.
 
-      const indexSummary = JSON.stringify(vaultIndex).slice(0, 12000);
-
-      // Send contents pages + index to get scored page selections
-      const contentsBlocks = contentsData.map(d => ({
-        type: "document",
-        source: { type: "base64", media_type: "application/pdf", data: d.contentsBase64 },
-        title: `CONTENTS: ${d.pdf.name}`,
-      }));
-
-      const scoringPrompt = `You are an expert building regulations analyst. Your job is to identify which specific sections and pages of these documents are most likely to contain the answer to the question below.
-
-You have been given:
-1. The contents pages / first pages of each document (to read table of contents, chapter lists, section numbering)
-2. A full structural index of all headings
-
-DOCUMENT INDEX:
+DOCUMENT INDEX (headings, sections and page numbers extracted from vault documents):
 ${indexSummary}
 
 QUESTION: ${q}
 
-Analyse the contents pages and index carefully. For EVERY section that could possibly be relevant — even tangentially — assign a probability score.
+Analyse the index carefully. For every section that could possibly be relevant — even tangentially — assign a probability score. Building regulations frequently contain cross-references, exceptions and caveats in unexpected sections. Be CONSERVATIVE — it is better to include a borderline section than to miss critical information.
 
-Be CONSERVATIVE — it is better to include a borderline section than to miss critical information. Building regulations frequently contain cross-references, exceptions and caveats in unexpected sections.
-
-Respond ONLY as JSON:
+Respond ONLY as JSON — no other text:
 {
   "styleNotes": "brief description of document style and terminology",
   "selectedDocs": [
     {
-      "docName": "exact document filename",
+      "docName": "exact document filename as it appears in the index",
       "reason": "why this document is relevant",
       "sections": [
         {
-          "heading": "exact section heading",
-          "pageHint": "page number or range",
+          "heading": "exact section heading from index",
+          "pageHint": "page number or range e.g. 12 or 12-15",
           "probability": 0.95,
           "reason": "why this section is relevant",
-          "crossRefs": ["any sections this might cross-reference"]
+          "crossRefs": ["other section headings this likely cross-references"]
         }
       ]
     }
   ]
 }
 
-Include ALL sections with probability > 0.3. For building regulations, err on the side of inclusion.`;
+Include ALL sections with probability > 0.3. Always include page numbers where available in the index.`;
 
       const scoringText = await callClaude(
-        [{ role: "user", content: [...contentsBlocks, { type: "text", text: scoringPrompt }] }],
-        "You are a building regulations expert scoring document sections for relevance. Be conservative — include borderline sections. Return pure JSON only.",
+        [{ role: "user", content: scoringPrompt }],
+        "You are a building regulations expert. Score document sections for relevance using only the text index provided. Return pure JSON only, no markdown.",
         2000
       );
 
@@ -449,6 +397,24 @@ Include ALL sections with probability > 0.3. For building regulations, err on th
       } catch {
         const m = scoringText.match(/\{[\s\S]*\}/);
         if (m) try { scoring = JSON.parse(m[0]); } catch {}
+      }
+
+      // Pre-load all PDFs needed for page extraction (done after scoring, not before)
+      setStatusMsg("Pass 1/3 · Loading documents for page extraction…");
+      const contentsData = [];
+      const selectedDocNames = (scoring.selectedDocs || []).map(d => d.docName);
+      const docsNeeded = pdfs.filter(p =>
+        selectedDocNames.some(n => p.name.includes(n) || n.includes(p.name))
+      );
+      const docsToFetch = docsNeeded.length > 0 ? docsNeeded : pdfs.slice(0, 2);
+
+      for (const pdf of docsToFetch) {
+        try {
+          const pdfData = await api(`/api/vaults/${encodeURIComponent(vault.id)}/pdfs/${encodeURIComponent(pdf.name)}`);
+          contentsData.push({ pdf, base64: pdfData.base64 });
+        } catch (e) {
+          console.warn(`Could not load ${pdf.name}:`, e);
+        }
       }
 
       // ── PASS 2: Extract ONLY the specific pages identified in Pass 1 ─────────
