@@ -61,12 +61,20 @@ async function splitPdfIntoChunks(base64Data, chunkSize) {
   }
 }
 
-async function callClaude(messages, systemPrompt, maxTokens = 1000) {
+async function callClaude(messages, systemPrompt, maxTokens = 1000, retries = 2) {
   const res = await fetch(`${API_BASE}/api/claude`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system: systemPrompt, messages }),
   });
+
+  // Auto-retry on rate limit with 65 second wait
+  if (res.status === 429 && retries > 0) {
+    console.log(`Rate limit hit, waiting 65 seconds before retry (${retries} retries left)…`);
+    await new Promise(r => setTimeout(r, 65000));
+    return callClaude(messages, systemPrompt, maxTokens, retries - 1);
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `API error ${res.status}`);
@@ -616,58 +624,64 @@ PRIORITY SECTIONS IDENTIFIED: ${focusSections || "all sections"}
 RESPONSE STRUCTURE — follow this exact structure every time:
 
 ## Summary
-Write 2-4 sentences giving a direct, concise answer in plain English. This should stand alone as a complete answer.
-
-Immediately after the summary provide the primary citation:
-> **[Document Name]** | Section [X.X] — [Heading] | Page [X]
-> *"[exact wording from document]"*
+Write 2-4 sentences giving a direct, concise answer in plain English. This should stand alone as a complete answer for someone who needs a quick response.
 
 ---
 
 ## Detailed Analysis
 
-Write a thorough, fully reasoned analysis structured using the same headings, numbering and terminology as the source documents. For each point:
+Write a thorough, fully reasoned analysis. Use the same headings, section numbers and terminology as the source documents.
 
-1. State the requirement or finding clearly
-2. Explain the reasoning behind it in plain English — why does this requirement exist, what does it mean in practice
-3. Quote the relevant paragraph(s) directly from the document in full — do not paraphrase when you can quote
-4. Provide the inline citation immediately after
+COMPLETENESS: Include ALL relevant information from the provided pages. Do not truncate, summarise or skip requirements. If a section contains multiple relevant points, include every one of them.
+
+STRUCTURE FOR EACH POINT:
+1. Introduce the requirement or topic with a clear explanatory sentence in plain English — explain what it means and why it exists
+2. Embed the full relevant paragraph(s) from the document directly into the body of the answer as a block quote
+3. Place the citation on the line immediately below the quote
+
+QUOTE FORMAT — embed full paragraphs from the source document as block quotes within the answer:
+> "[Full paragraph or sentence exactly as it appears in the document — do not truncate or paraphrase]"
+
+CITATION FORMAT — immediately below each quote, on its own line:
+> *[Document Name] | Page [X] | Section [X.X] — [Heading]*
 
 Use:
-- **Full paragraphs** as the primary format — write proper reasoned prose, not just bullet lists
-- **Bullet points** only for lists of specific criteria, dimensions or options within a paragraph
-- **Tables** where comparing multiple requirements, dimensions, specifications or options side by side
-- **Sub-headings (###)** matching the section headings in the source document
-- **Bold** for defined terms, regulation numbers and key requirements
+- **Sub-headings (###)** matching section headings from the source document
+- **Bold** for defined terms, regulation numbers and critical requirements
+- **Bullet points** only for lists of specific items within a section
 
-INLINE CITATIONS — after every paragraph or quoted extract, immediately add:
-> **[Document Name]** | Section [X.X] — [Heading] | Page [X]
-> *"[direct quote of the exact paragraph or sentence from the document]"*
+TABLES — create a summary table whenever the answer involves ANY of the following:
+- Minimum or maximum dimensions, heights, widths, areas or distances
+- Fire resistance ratings, performance classifications or test standards
+- Different requirements for different building types, occupancy classes or use cases
+- Comparisons between two or more options, methods or specifications
+- Checklists of requirements that must all be met
+- Any data that appears in a table in the source document
 
-Every point must have its citation and direct quote immediately beneath it. Do not group citations at the end.
+Table format — always include a header row and use the same column names as the source document where possible:
+| Requirement | Value | Notes |
+|---|---|---|
+| Example | Example | Example |
+
+Place the summary table AFTER the relevant section heading and BEFORE the detailed quotes, so the reader gets an at-a-glance overview first, then the full detail below.
 
 ---
 
 ## Contradictions & Conflicts
-List any contradictions, conflicts or ambiguities found between sections or documents. For each conflict provide:
-- What the conflict is
-- Citation and direct quote for each conflicting statement
-If none found, write "No contradictions identified."
+List any contradictions, conflicts or ambiguities found between sections or documents, with the relevant quotes and citations for each. If none found, write "No contradictions identified."
 
 ---
 
-STYLE REQUIREMENTS:
-- Formal, technical style matching the source building regulations
-- Same terminology, defined terms and numbering conventions as source material
-- Write in full reasoned paragraphs — explain the why, not just the what
-- Quote full sentences and paragraphs from the source — do not over-paraphrase
-- Precise and unambiguous — this is regulatory guidance
-- No external knowledge whatsoever
-- If documents do not contain enough information to fully answer, state this explicitly and explain what is missing`;
+RULES:
+- Use ONLY information from the provided documents — no external knowledge
+- Include ALL relevant requirements — never omit detail to save space
+- Quote full paragraphs, not fragments
+- Every quote must have a citation directly below it
+- If the documents do not contain enough information to fully answer, state this explicitly`;
 
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
-        `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Write in full reasoned paragraphs. Quote directly from source documents. Cite inline after every point.`,
+        `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Embed full paragraph quotes from the source documents within the answer body. Place the citation directly below each quote. Include ALL relevant information — do not truncate or omit detail.`,
         5000
       );
 
@@ -682,7 +696,11 @@ STYLE REQUIREMENTS:
       setStatusMsg(`Answer ready · Est. cost: ${costGBP < 0.01 ? "< 1p" : costGBP.toFixed(2) + "p"}`);
     } catch (err) {
       setStage(null);
-      setStatusMsg("Error: " + err.message);
+      if (err.message && err.message.includes('rate_limit')) {
+        setStatusMsg('Rate limit reached — please wait 60 seconds and try again.');
+      } else {
+        setStatusMsg("Error: " + err.message);
+      }
     }
   };
 
