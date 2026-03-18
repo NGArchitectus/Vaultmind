@@ -559,36 +559,49 @@ Immediately after the summary provide the primary citation:
 
 ## Detailed Analysis
 
-Thorough breakdown using the same headings, numbering and terminology as the source documents. Use:
-- **Bullet points** for lists of requirements or criteria
-- **Tables** where comparing requirements, dimensions, specifications or options
-- **Sub-headings (###)** to organise by document section
+Write a thorough, fully reasoned analysis structured using the same headings, numbering and terminology as the source documents. For each point:
+
+1. State the requirement or finding clearly
+2. Explain the reasoning behind it in plain English — why does this requirement exist, what does it mean in practice
+3. Quote the relevant paragraph(s) directly from the document in full — do not paraphrase when you can quote
+4. Provide the inline citation immediately after
+
+Use:
+- **Full paragraphs** as the primary format — write proper reasoned prose, not just bullet lists
+- **Bullet points** only for lists of specific criteria, dimensions or options within a paragraph
+- **Tables** where comparing multiple requirements, dimensions, specifications or options side by side
+- **Sub-headings (###)** matching the section headings in the source document
 - **Bold** for defined terms, regulation numbers and key requirements
 
-INLINE CITATIONS — after every statement, fact or requirement, immediately add on the next line:
+INLINE CITATIONS — after every paragraph or quoted extract, immediately add:
 > **[Document Name]** | Section [X.X] — [Heading] | Page [X]
-> *"[exact wording from document]"*
+> *"[direct quote of the exact paragraph or sentence from the document]"*
 
-Every single point must have its citation directly beneath it. Do not group citations.
+Every point must have its citation and direct quote immediately beneath it. Do not group citations at the end.
 
 ---
 
 ## Contradictions & Conflicts
-List any contradictions, conflicts or ambiguities found between sections or documents, with citations for each conflicting statement. If none found, write "No contradictions identified."
+List any contradictions, conflicts or ambiguities found between sections or documents. For each conflict provide:
+- What the conflict is
+- Citation and direct quote for each conflicting statement
+If none found, write "No contradictions identified."
 
 ---
 
 STYLE REQUIREMENTS:
 - Formal, technical style matching the source building regulations
 - Same terminology, defined terms and numbering conventions as source material
+- Write in full reasoned paragraphs — explain the why, not just the what
+- Quote full sentences and paragraphs from the source — do not over-paraphrase
 - Precise and unambiguous — this is regulatory guidance
-- No external knowledge
-- If documents do not contain enough information, state this explicitly`;
+- No external knowledge whatsoever
+- If documents do not contain enough information to fully answer, state this explicitly and explain what is missing`;
 
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
-        `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Cite exact wording inline after every point.`,
-        4000
+        `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Write in full reasoned paragraphs. Quote directly from source documents. Cite inline after every point.`,
+        5000
       );
 
       setProgress(p => ({ ...p, answer: 100 }));
@@ -749,11 +762,11 @@ STYLE REQUIREMENTS:
                   {vaultHistory.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
                       {vaultHistory.map((h, i) => (
-                        <div key={i} style={{ marginBottom: 20, opacity: 0.6 }}>
-                          <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>Q: {h.question}</div>
-                          <div style={{ background: "#0f0e0c", border: "1px solid #1e1c18", borderRadius: 10, padding: "14px 18px", maxHeight: 120, overflow: "hidden", position: "relative" }}>
-                            <AnswerRenderer text={h.answer} />
-                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 40, background: "linear-gradient(transparent,#0f0e0c)" }} />
+                        <div key={i} style={{ marginBottom: 12, opacity: 0.5 }}>
+                          <div style={{ fontSize: 11, color: "#888", background: "#0f0e0c", border: "1px solid #1e1c18", borderRadius: 8, padding: "8px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                            <span style={{ color: "#c8a96e", fontWeight: 500 }}>Q:</span>
+                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.question}</span>
+                            <span style={{ fontSize: 10, color: "#444", flexShrink: 0 }}>{new Date(h.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                           </div>
                         </div>
                       ))}
