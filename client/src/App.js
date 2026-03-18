@@ -446,24 +446,34 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
       setStage("reading");
       setStatusMsg("Pass 2/3 · Extracting specific relevant pages only…");
 
-      // Helper to parse page hints like "12", "12-15", "12,14,16"
+      // Helper to parse page hints in ANY format:
+      // "12", "p.12", "page 12", "pp.12-15", "12-15", "12,14,16", "Section 2 p.34"
       const parsePageNums = (hint, totalPages) => {
         const pages = new Set();
         if (!hint) return pages;
-        const str = String(hint).replace(/[^0-9,\-]/g, "");
-        str.split(",").forEach(part => {
-          const range = part.split("-");
-          if (range.length === 2) {
-            const start = parseInt(range[0]);
-            const end = parseInt(range[1]);
-            if (!isNaN(start) && !isNaN(end)) {
-              for (let i = start; i <= Math.min(end, totalPages); i++) pages.add(i);
-            }
-          } else {
-            const n = parseInt(part);
-            if (!isNaN(n) && n > 0 && n <= totalPages) pages.add(n);
+        const str = String(hint);
+
+        // Extract all numbers from the hint
+        const allNums = str.match(/\d+/g);
+        if (!allNums) return pages;
+
+        // Check if it looks like a range (two numbers close together)
+        if (allNums.length >= 2) {
+          const n1 = parseInt(allNums[0]);
+          const n2 = parseInt(allNums[1]);
+          // If both are plausible page numbers and n2 > n1, treat as range
+          if (n1 > 0 && n2 > n1 && n2 <= n1 + 20 && n2 <= 9999) {
+            for (let i = n1; i <= n2; i++) pages.add(i);
+            return pages;
           }
+        }
+
+        // Otherwise add each number as an individual page
+        allNums.forEach(n => {
+          const num = parseInt(n);
+          if (num > 0 && num <= 9999) pages.add(num);
         });
+
         return pages;
       };
 
@@ -518,14 +528,24 @@ Include ALL sections with probability > 0.3. Always include page numbers where a
         }
       }
 
-      // Fallback: if no pages identified, use first 30 pages of most relevant doc
+      // Fallback 1: if no docs matched at all, use first 5 pages of top 2 docs
       if (Object.keys(docPageMap).length === 0 && contentsData.length > 0) {
-        const fallbackDoc = contentsData[0];
-        docPageMap[fallbackDoc.pdf.name] = { contentsDoc: fallbackDoc, pages: new Set() };
-        for (let i = 1; i <= 10; i++) docPageMap[fallbackDoc.pdf.name].pages.add(i);
+        contentsData.slice(0, 2).forEach(d => {
+          docPageMap[d.pdf.name] = { contentsDoc: d, pages: new Set() };
+          for (let i = 1; i <= 5; i++) docPageMap[d.pdf.name].pages.add(i);
+        });
       }
 
-      console.log(`Page budget used: ${HARD_PAGE_BUDGET - budgetRemaining}/${HARD_PAGE_BUDGET} pages across ${Object.keys(docPageMap).length} documents`);
+      // Fallback 2: if docs matched but pages are empty (page hint parsing failed), use first 5 pages
+      Object.entries(docPageMap).forEach(([key, val]) => {
+        if (val.pages.size === 0) {
+          for (let i = 1; i <= 5; i++) val.pages.add(i);
+        }
+      });
+
+      const pagesUsed = HARD_PAGE_BUDGET - budgetRemaining;
+      console.log(`Page budget used: ${pagesUsed}/${HARD_PAGE_BUDGET} pages across ${Object.keys(docPageMap).length} documents`);
+      if (pagesUsed === 0) console.warn("WARNING: No pages selected — page hint format may not be parseable");
 
       // Extract specific pages server-side (reliable binary handling)
       const docBlocks = [];
