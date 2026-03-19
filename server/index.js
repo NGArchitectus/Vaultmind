@@ -31,46 +31,48 @@ app.post("/api/claude", async (req, res) => {
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY not set." });
 
   try {
-    const { system, messages } = req.body;
+    const { system, messages, max_tokens } = req.body;
     
-    // Map Anthropic messages to Gemini format
-    const contents = messages.map(m => {
+    const contents = [];
+    if (system) {
+      contents.push({
+        role: "user",
+        parts: [{ text: `SYSTEM INSTRUCTIONS: ${system}\n\nPlease acknowledge.` }]
+      }, {
+        role: "model",
+        parts: [{ text: "Understood." }]
+      });
+    }
+
+    messages.forEach(m => {
       const parts = [];
       if (typeof m.content === "string") {
         parts.push({ text: m.content });
       } else if (Array.isArray(m.content)) {
         m.content.forEach(c => {
           if (c.type === "text") parts.push({ text: c.text });
-          if (c.type === "image" || (c.type === "document" && c.source?.media_type === "application/pdf")) {
+          if (c.type === "document" && c.source?.data) {
             parts.push({
               inline_data: {
-                mime_type: c.source?.media_type || "application/pdf",
-                data: c.source?.data
+                mime_type: "application/pdf",
+                data: c.source.data
               }
             });
           }
         });
       }
-      return { role: m.role === "assistant" ? "model" : "user", parts };
+      contents.push({ role: m.role === "assistant" ? "model" : "user", parts });
     });
-
-    // Inject system prompt as first user message if present
-    if (system) {
-      contents.unshift({
-        role: "user",
-        parts: [{ text: `SYSTEM INSTRUCTIONS: ${system}\n\nPlease acknowledge and wait for my first request.` }]
-      }, {
-        role: "model",
-        parts: [{ text: "Understood. I will follow those instructions exactly." }]
-      });
-    }
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents })
+        body: JSON.stringify({ 
+          contents,
+          generationConfig: { maxOutputTokens: max_tokens || 4000, temperature: 0.1 }
+        })
       }
     );
 
@@ -79,7 +81,7 @@ app.post("/api/claude", async (req, res) => {
 
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // CLEANER: If Gemini returns markdown JSON blocks, strip them so the frontend can parse easily
+    // FIX: Strip Markdown JSON blocks so indexing doesn't fail
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
     res.json({ content: [{ type: "text", text }] });
@@ -89,75 +91,34 @@ app.post("/api/claude", async (req, res) => {
   }
 });
 
-// ── PAGE EXTRACTION ──────────────────────────────────────────────────────────
-app.post("/api/extract-pages", async (req, res) => {
-  const { base64, pages } = req.body;
-  if (!base64 || !pages) return res.status(400).json({ error: "Missing data" });
-
-  try {
-    const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const totalPages = srcDoc.getPageCount();
-    
-    const pageIndices = pages
-      .map(p => p - 1)
-      .filter(i => i >= 0 && i < totalPages)
-      .sort((a, b) => a - b);
-
-    if (pageIndices.length === 0) return res.status(400).json({ error: "No valid pages" });
-
-    const extractedDoc = await PDFDocument.create();
-    const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
-    copiedPages.forEach(p => extractedDoc.addPage(p));
-    
-    const extractedBytes = await extractedDoc.save();
-    res.json({
-      base64: Buffer.from(extractedBytes).toString("base64"),
-      pagesExtracted: pageIndices.length
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── R2 STORAGE ENDPOINTS ──────────────────────────────────────────────────────
+// ── VAULT ROUTES ──────────────────────────────────────────────────────────────
 app.get("/api/vaults", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Delimiter: "/" }));
-    const vaults = (data.CommonPrefixes || []).map(p => p.Prefix.replace("/", ""));
-    res.json(vaults);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Return BOTH formats to ensure frontend compatibility
+    const vaultList = (data.CommonPrefixes || []).map(p => ({
+      id: p.Prefix.replace("/", ""),
+      name: p.Prefix.replace("/", "")
+    }));
+    res.json({ vaults: vaultList, list: vaultList }); 
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.get("/api/vaults/:id", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: `${req.params.id}/` }));
-    const files = (data.Contents || [])
+    const pdfs = (data.Contents || [])
       .filter(f => f.Key.endsWith(".pdf"))
-      .map(f => ({ name: f.Key.split("/")[1], size: f.Size, key: f.Key }));
-    res.json(files);
+      .map(f => ({ 
+        id: f.Key, 
+        name: f.Key.replace(`${req.params.id}/`, ""), 
+        size: f.Size, 
+        key: f.Key 
+      }));
+    res.json({ pdfs });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post("/api/vaults/:id/upload", async (req, res) => {
-  const { name, base64 } = req.body;
-  try {
-    await r2.send(new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: `${req.params.id}/${name}`,
-      Body: Buffer.from(base64, "base64"),
-      ContentType: "application/pdf"
-    }));
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get("/api/vaults/:id/index", async (req, res) => {
-  try {
-    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${req.params.id}/.index.json` }));
-    const body = await streamToBuffer(data.Body);
-    res.json(JSON.parse(body.toString()));
-  } catch (err) { res.json({ headings: [] }); }
 });
 
 app.post("/api/vaults/:id/index", async (req, res) => {
@@ -172,5 +133,17 @@ app.post("/api/vaults/:id/index", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.get("/api/vaults/:id/index", async (req, res) => {
+  try {
+    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${req.params.id}/.index.json` }));
+    const body = await streamToBuffer(data.Body);
+    res.json(JSON.parse(body.toString()));
+  } catch (err) { res.json({ headings: [] }); }
+});
+
+// ── PAGE EXTRACTION ──────────────────────────────────────────────────────────
+app.post("/api/extract-pages", async (req, res) => {
+  const { base64, pages } = req.body;
+  try {
+    const pdfBytes = Buffer.from(base64, "base64");
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true
