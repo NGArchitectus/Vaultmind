@@ -102,6 +102,7 @@ app.post("/api/claude", async (req, res) => {
 
     // Convert Gemini response back to Anthropic format so frontend needs no changes
     const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    console.log("Gemini raw response (first 500 chars):", text.slice(0, 500));
     res.json({
       content: [{ type: "text", text }]
     });
