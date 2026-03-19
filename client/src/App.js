@@ -42,7 +42,7 @@ async function splitPdfIntoChunks(base64Data, chunkSize) {
     }
     const { PDFDocument } = window.PDFLib;
     const pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-    const srcDoc = await PDFDocument.load(pdfBytes);
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
     const chunks = [];
     for (let start = 0; start < totalPages; start += chunkSize) {
@@ -502,6 +502,15 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
         const m = scoringText.match(/\{[\s\S]*\}/);
         if (m) try { scoring = JSON.parse(m[0]); } catch {}
       }
+      // Debug: log scoring result
+      console.log("Scoring result:", JSON.stringify(scoring).slice(0, 500));
+      console.log("Selected docs:", (scoring.selectedDocs || []).length);
+      (scoring.selectedDocs || []).forEach(d => {
+        console.log("Doc:", d.docName, "Sections:", (d.sections || []).length);
+        (d.sections || []).slice(0, 3).forEach(s => {
+          console.log("  Section:", s.heading?.slice(0,30), "pageHint:", JSON.stringify(s.pageHint), typeof s.pageHint);
+        });
+      });
 
       // Pre-load all PDFs needed for page extraction (done after scoring, not before)
       setStatusMsg("Pass 1/3 · Loading documents for page extraction…");
