@@ -171,7 +171,7 @@ app.post("/api/extract-pages", async (req, res) => {
   try {
     const { PDFDocument } = require("pdf-lib");
     const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes);
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
 
     // Convert 1-based page numbers to valid 0-based indices
@@ -212,7 +212,7 @@ app.post("/api/extract-pages", async (req, res) => {
   try {
     const { PDFDocument } = require("pdf-lib");
     const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes);
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
     const pageIndices = pages
       .map(p => p - 1)
@@ -240,7 +240,7 @@ app.post("/api/extract-pages", async (req, res) => {
   try {
     const { PDFDocument } = require("pdf-lib");
     const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes);
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
     const pageIndices = pages
       .map(p => p - 1)
