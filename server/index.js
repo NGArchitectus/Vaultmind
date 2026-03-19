@@ -25,7 +25,7 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-// ── GEMINI PROXY ─────────────────────────────────────────────────────────────
+// ── GEMINI PROXY (Handles Search & Indexing) ─────────────────────────────────
 app.post("/api/claude", async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY not set." });
@@ -81,7 +81,7 @@ app.post("/api/claude", async (req, res) => {
 
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // Clean up Gemini's potential markdown formatting
+    // STRIP MARKDOWN: Prevents "Unexpected Token" errors in the frontend
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
     res.json({ content: [{ type: "text", text }] });
@@ -91,7 +91,7 @@ app.post("/api/claude", async (req, res) => {
   }
 });
 
-// ── VAULT ROUTES ──────────────────────────────────────────────────────────────
+// ── VAULT LISTING (The "Approved Documents" fix) ─────────────────────────────
 app.get("/api/vaults", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Delimiter: "/" }));
@@ -99,32 +99,44 @@ app.get("/api/vaults", async (req, res) => {
       id: p.Prefix.replace("/", ""),
       name: p.Prefix.replace("/", "")
     }));
-    res.json({ vaults: vaultList }); 
+    // Support both expected frontend formats
+    res.json({ vaults: vaultList, list: vaultList }); 
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
 });
 
+// ── FILE LISTING (The "Missing PDFs" fix) ────────────────────────────────────
 app.get("/api/vaults/:id", async (req, res) => {
   try {
-    const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: `${req.params.id}/` }));
+    const vaultId = decodeURIComponent(req.params.id);
+    const prefix = vaultId.endsWith('/') ? vaultId : `${vaultId}/`;
+    
+    const data = await r2.send(new ListObjectsV2Command({ 
+      Bucket: BUCKET, 
+      Prefix: prefix 
+    }));
+
     const pdfs = (data.Contents || [])
-      .filter(f => f.Key.endsWith(".pdf"))
+      .filter(f => f.Key.toLowerCase().endsWith(".pdf"))
       .map(f => ({ 
         id: f.Key, 
-        name: f.Key.replace(`${req.params.id}/`, ""), 
+        name: f.Key.replace(prefix, ""), 
         size: f.Size, 
         key: f.Key 
       }));
-    res.json({ pdfs });
+
+    res.json({ pdfs, files: pdfs });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── INDEXING STORAGE ─────────────────────────────────────────────────────────
 app.post("/api/vaults/:id/index", async (req, res) => {
   try {
+    const vaultId = decodeURIComponent(req.params.id);
     await r2.send(new PutObjectCommand({
       Bucket: BUCKET,
-      Key: `${req.params.id}/.index.json`,
+      Key: `${vaultId}/.index.json`,
       Body: JSON.stringify(req.body),
       ContentType: "application/json"
     }));
@@ -134,7 +146,8 @@ app.post("/api/vaults/:id/index", async (req, res) => {
 
 app.get("/api/vaults/:id/index", async (req, res) => {
   try {
-    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${req.params.id}/.index.json` }));
+    const vaultId = decodeURIComponent(req.params.id);
+    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${vaultId}/.index.json` }));
     const body = await streamToBuffer(data.Body);
     res.json(JSON.parse(body.toString()));
   } catch (err) { res.json({ headings: [] }); }
@@ -160,5 +173,3 @@ app.post("/api/extract-pages", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-// END OF FILE - ENSURE THIS LINE IS COPIED
