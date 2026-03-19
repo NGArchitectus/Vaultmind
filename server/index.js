@@ -29,9 +29,8 @@ async function streamToBuffer(stream) {
 app.post("/api/claude", async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY not set." });
-
   try {
-    const { system, messages, max_tokens } = req.body;
+    const { system, messages } = req.body;
     const contents = [];
     if (system) {
       contents.push({ role: "user", parts: [{ text: `SYSTEM: ${system}` }] });
@@ -48,13 +47,11 @@ app.post("/api/claude", async (req, res) => {
       }
       contents.push({ role: m.role === "assistant" ? "model" : "user", parts });
     });
-
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents, generationConfig: { temperature: 0.1 } })
     });
-
     const data = await response.json();
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -62,7 +59,7 @@ app.post("/api/claude", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── VAULT LISTING ────────────────────────────────────────────────────────────
+// ── VAULT LIST ───────────────────────────────────────────────────────────────
 app.get("/api/vaults", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Delimiter: "/" }));
@@ -70,32 +67,39 @@ app.get("/api/vaults", async (req, res) => {
       id: p.Prefix.replace("/", ""),
       name: p.Prefix.replace("/", "")
     }));
-    res.json({ vaults: list, list: list });
+    res.json({ vaults: list });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── VAULT DETAILS (PDF LIST) - FIXED 404 ISSUE ───────────────────────────────
-app.get("/api/vaults/:id", async (req, res) => {
+// ── VAULT CONTENT (FIXED ROUTE) ─────────────────────────────────────────────
+// This matches your Frontend's api(`/api/vaults/${vaultId}/pdfs`) call
+app.get("/api/vaults/:id/pdfs", async (req, res) => {
   try {
-    // Decode the ID (handles spaces like "Approved Documents")
     const vaultId = decodeURIComponent(req.params.id);
     const prefix = vaultId.endsWith("/") ? vaultId : `${vaultId}/`;
-
-    const data = await r2.send(new ListObjectsV2Command({ 
-      Bucket: BUCKET, 
-      Prefix: prefix 
-    }));
-
+    
+    const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
     const pdfs = (data.Contents || [])
       .filter(f => f.Key.toLowerCase().endsWith(".pdf"))
-      .map(f => ({ 
-        id: f.Key, 
-        name: f.Key.replace(prefix, ""), 
-        size: f.Size, 
-        key: f.Key 
+      .map(f => ({
+        id: f.Key,
+        name: f.Key.replace(prefix, ""),
+        size: f.Size,
+        key: f.Key
       }));
+    res.json({ pdfs });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-    res.json({ pdfs, files: pdfs });
+// ── GET SINGLE PDF ───────────────────────────────────────────────────────────
+app.get("/api/vaults/:id/pdfs/:name", async (req, res) => {
+  try {
+    const vaultId = decodeURIComponent(req.params.id);
+    const fileName = decodeURIComponent(req.params.name);
+    const key = `${vaultId}/${fileName}`;
+    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    const body = await streamToBuffer(data.Body);
+    res.json({ base64: body.toString("base64") });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -119,21 +123,6 @@ app.post("/api/vaults/:id/index", async (req, res) => {
       ContentType: "application/json"
     }));
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ── EXTRACTION ───────────────────────────────────────────────────────────────
-app.post("/api/extract-pages", async (req, res) => {
-  try {
-    const { base64, pages } = req.body;
-    const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const extractedDoc = await PDFDocument.create();
-    const indices = pages.map(p => p - 1).filter(i => i >= 0 && i < srcDoc.getPageCount());
-    const copied = await extractedDoc.copyPages(srcDoc, indices);
-    copied.forEach(p => extractedDoc.addPage(p));
-    const finalBase64 = Buffer.from(await extractedDoc.save()).toString("base64");
-    res.json({ base64: finalBase64 });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
