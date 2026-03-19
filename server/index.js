@@ -81,7 +81,7 @@ app.post("/api/claude", async (req, res) => {
 
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // FIX: Strip Markdown JSON blocks so indexing doesn't fail
+    // Clean up Gemini's potential markdown formatting
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
     res.json({ content: [{ type: "text", text }] });
@@ -95,12 +95,11 @@ app.post("/api/claude", async (req, res) => {
 app.get("/api/vaults", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Delimiter: "/" }));
-    // Return BOTH formats to ensure frontend compatibility
     const vaultList = (data.CommonPrefixes || []).map(p => ({
       id: p.Prefix.replace("/", ""),
       name: p.Prefix.replace("/", "")
     }));
-    res.json({ vaults: vaultList, list: vaultList }); 
+    res.json({ vaults: vaultList }); 
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
@@ -146,4 +145,20 @@ app.post("/api/extract-pages", async (req, res) => {
   const { base64, pages } = req.body;
   try {
     const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    const totalPages = srcDoc.getPageCount();
+    const pageIndices = pages.map(p => p - 1).filter(i => i >= 0 && i < totalPages).sort((a, b) => a - b);
+    
+    const extractedDoc = await PDFDocument.create();
+    const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
+    copiedPages.forEach(p => extractedDoc.addPage(p));
+    
+    const extractedBytes = await extractedDoc.save();
+    res.json({ base64: Buffer.from(extractedBytes).toString("base64") });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// END OF FILE - ENSURE THIS LINE IS COPIED
