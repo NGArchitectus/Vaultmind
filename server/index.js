@@ -161,104 +161,37 @@ app.get("/api/vaults/:vault/index", async (req, res) => {
   }
 });
 
-// ── page extraction endpoint ─────────────────────────────────────────────────
+// ── page extraction — server side for reliable binary handling ────────────────
 app.post("/api/extract-pages", async (req, res) => {
   const { base64, pages } = req.body;
   if (!base64 || !pages || !Array.isArray(pages)) {
     return res.status(400).json({ error: "base64 and pages array required" });
   }
-
   try {
     const { PDFDocument } = require("pdf-lib");
     const pdfBytes = Buffer.from(base64, "base64");
     const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
-
-    // Convert 1-based page numbers to valid 0-based indices
     const pageIndices = pages
       .map(p => p - 1)
       .filter(i => i >= 0 && i < totalPages)
       .sort((a, b) => a - b);
-
-    if (pageIndices.length === 0) {
-      return res.status(400).json({ error: "No valid pages found" });
-    }
-
+    if (pageIndices.length === 0) return res.status(400).json({ error: "No valid pages" });
     const extractedDoc = await PDFDocument.create();
     const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
     copiedPages.forEach(p => extractedDoc.addPage(p));
     const extractedBytes = await extractedDoc.save();
-
-    // Server-side Buffer.toString("base64") is always correct
     const extractedBase64 = Buffer.from(extractedBytes).toString("base64");
-
     res.json({
       base64: extractedBase64,
       pagesExtracted: pageIndices.length,
       pageNumbers: pageIndices.map(i => i + 1)
     });
   } catch (err) {
-    console.error("Page extraction error:", err);
+    console.error("Page extraction error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// ── page extraction endpoint ─────────────────────────────────────────────────
-app.post("/api/extract-pages", async (req, res) => {
-  const { base64, pages } = req.body;
-  if (!base64 || !pages || !Array.isArray(pages)) {
-    return res.status(400).json({ error: "base64 and pages array required" });
-  }
-  try {
-    const { PDFDocument } = require("pdf-lib");
-    const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const totalPages = srcDoc.getPageCount();
-    const pageIndices = pages
-      .map(p => p - 1)
-      .filter(i => i >= 0 && i < totalPages)
-      .sort((a, b) => a - b);
-    if (pageIndices.length === 0) return res.status(400).json({ error: "No valid pages" });
-    const extractedDoc = await PDFDocument.create();
-    const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
-    copiedPages.forEach(p => extractedDoc.addPage(p));
-    const extractedBytes = await extractedDoc.save();
-    const extractedBase64 = Buffer.from(extractedBytes).toString("base64");
-    res.json({ base64: extractedBase64, pagesExtracted: pageIndices.length, pageNumbers: pageIndices.map(i => i + 1) });
-  } catch (err) {
-    console.error("Page extraction error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── page extraction endpoint ─────────────────────────────────────────────────
-app.post("/api/extract-pages", async (req, res) => {
-  const { base64, pages } = req.body;
-  if (!base64 || !pages || !Array.isArray(pages)) {
-    return res.status(400).json({ error: "base64 and pages array required" });
-  }
-  try {
-    const { PDFDocument } = require("pdf-lib");
-    const pdfBytes = Buffer.from(base64, "base64");
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const totalPages = srcDoc.getPageCount();
-    const pageIndices = pages
-      .map(p => p - 1)
-      .filter(i => i >= 0 && i < totalPages)
-      .sort((a, b) => a - b);
-    if (pageIndices.length === 0) return res.status(400).json({ error: "No valid pages" });
-    const extractedDoc = await PDFDocument.create();
-    const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
-    copiedPages.forEach(p => extractedDoc.addPage(p));
-    const extractedBytes = await extractedDoc.save();
-    const extractedBase64 = Buffer.from(extractedBytes).toString("base64");
-    res.json({ base64: extractedBase64, pagesExtracted: pageIndices.length, pageNumbers: pageIndices.map(i => i + 1) });
-  } catch (err) {
-    console.error("Page extraction error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.get("*", (req, res) => res.status(404).json({ error: "Not found" }));
