@@ -77,7 +77,7 @@ app.post("/api/claude", async (req, res) => {
       });
     }
 
-    const geminiModel = "gemini-1.5-pro";
+    const geminiModel = "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
