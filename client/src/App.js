@@ -382,35 +382,30 @@ export default function App() {
 
         let docIndex = { name: pdf.name, headings: [] };
         try {
-          const chunks = await splitPdfIntoChunks(base64, MAX_PAGES_PER_CHUNK);
-          const allHeadings = [];
+          // Send full PDF directly to Gemini — no client-side splitting needed.
+          // Gemini 2.5 has a 1M token context window so chunking is unnecessary,
+          // and browser pdf-lib crashes on GOV.UK encrypted PDFs anyway.
+          const contentBlocks = [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 }, title: pdf.name },
+            { type: "text", text: 'Extract ALL structural metadata from this document: every section heading, sub-heading, chapter name, table of contents entry, figure and table caption. Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}' }
+          ];
 
-          for (let c = 0; c < chunks.length; c++) {
-            const chunk = chunks[c];
-            if (chunks.length > 1) setStatusMsg(`Scanning ${pdf.name} — pages ${chunk.startPage}–${chunk.endPage} (chunk ${c + 1}/${chunks.length})…`);
-
-            const contentBlocks = [
-              { type: "document", source: { type: "base64", media_type: "application/pdf", data: chunk.base64 }, title: `${pdf.name} (pages ${chunk.startPage}-${chunk.endPage})` },
-              { type: "text", text: `Extract ALL structural metadata from pages ${chunk.startPage}-${chunk.endPage}: every section heading, sub-heading, chapter name, table of contents entry, figure and table caption. Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": "${chunk.startPage}"}]}` }
-            ];
-
-            try {
-              const indexText = await callClaude(
-                [{ role: "user", content: contentBlocks }],
-                "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
-                4000
-              );
-              let parsed = null;
-              const clean = indexText.replace(/```json|```/g, "").trim();
-              try { parsed = JSON.parse(clean); } catch {}
-              if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
-              if (!parsed) { const m = clean.match(/"headings"\s*:\s*(\[[\s\S]*?\])/); if (m) try { parsed = { headings: JSON.parse(m[1]) }; } catch {} }
-              if (parsed?.headings) allHeadings.push(...parsed.headings);
-            } catch (e) {
-              console.warn(`Chunk ${c + 1} of ${pdf.name} failed:`, e);
-            }
+          try {
+            const indexText = await callClaude(
+              [{ role: "user", content: contentBlocks }],
+              "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
+              4000
+            );
+            let parsed = null;
+            const clean = indexText.replace(/```json|```/g, "").trim();
+            try { parsed = JSON.parse(clean); } catch {}
+            if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
+            if (!parsed) { const m = clean.match(/"headings"\s*:\s*(\[[\s\S]*?\])/); if (m) try { parsed = { headings: JSON.parse(m[1]) }; } catch {} }
+            if (parsed?.headings) docIndex = { name: pdf.name, headings: parsed.headings };
+            console.log(`Indexed ${pdf.name}: ${docIndex.headings.length} headings found`);
+          } catch (e) {
+            console.warn(`Indexing ${pdf.name} failed:`, e);
           }
-          docIndex = { name: pdf.name, headings: allHeadings };
         } catch (e) {
           console.warn(`Could not index ${pdf.name}:`, e);
         }
