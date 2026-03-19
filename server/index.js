@@ -25,93 +25,62 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-// ── GEMINI PROXY (Handles Search & Indexing) ─────────────────────────────────
+// ── GEMINI PROXY ─────────────────────────────────────────────────────────────
 app.post("/api/claude", async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY not set." });
 
   try {
     const { system, messages, max_tokens } = req.body;
-    
     const contents = [];
     if (system) {
-      contents.push({
-        role: "user",
-        parts: [{ text: `SYSTEM INSTRUCTIONS: ${system}\n\nPlease acknowledge.` }]
-      }, {
-        role: "model",
-        parts: [{ text: "Understood." }]
-      });
+      contents.push({ role: "user", parts: [{ text: `SYSTEM: ${system}` }] });
+      contents.push({ role: "model", parts: [{ text: "Understood." }] });
     }
-
     messages.forEach(m => {
       const parts = [];
-      if (typeof m.content === "string") {
-        parts.push({ text: m.content });
-      } else if (Array.isArray(m.content)) {
+      if (typeof m.content === "string") parts.push({ text: m.content });
+      else if (Array.isArray(m.content)) {
         m.content.forEach(c => {
           if (c.type === "text") parts.push({ text: c.text });
-          if (c.type === "document" && c.source?.data) {
-            parts.push({
-              inline_data: {
-                mime_type: "application/pdf",
-                data: c.source.data
-              }
-            });
-          }
+          if (c.type === "document") parts.push({ inline_data: { mime_type: "application/pdf", data: c.source.data } });
         });
       }
       contents.push({ role: m.role === "assistant" ? "model" : "user", parts });
     });
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          contents,
-          generationConfig: { maxOutputTokens: max_tokens || 4000, temperature: 0.1 }
-        })
-      }
-    );
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents, generationConfig: { temperature: 0.1 } })
+    });
 
     const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    
-    // STRIP MARKDOWN: Prevents "Unexpected Token" errors in the frontend
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-
     res.json({ content: [{ type: "text", text }] });
-  } catch (err) {
-    console.error("Gemini Proxy Error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── VAULT LISTING (The "Approved Documents" fix) ─────────────────────────────
+// ── VAULT LISTING ────────────────────────────────────────────────────────────
 app.get("/api/vaults", async (req, res) => {
   try {
     const data = await r2.send(new ListObjectsV2Command({ Bucket: BUCKET, Delimiter: "/" }));
-    const vaultList = (data.CommonPrefixes || []).map(p => ({
+    const list = (data.CommonPrefixes || []).map(p => ({
       id: p.Prefix.replace("/", ""),
       name: p.Prefix.replace("/", "")
     }));
-    // Support both expected frontend formats
-    res.json({ vaults: vaultList, list: vaultList }); 
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
+    res.json({ vaults: list, list: list });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── FILE LISTING (The "Missing PDFs" fix) ────────────────────────────────────
+// ── VAULT DETAILS (PDF LIST) - FIXED 404 ISSUE ───────────────────────────────
 app.get("/api/vaults/:id", async (req, res) => {
   try {
+    // Decode the ID (handles spaces like "Approved Documents")
     const vaultId = decodeURIComponent(req.params.id);
-    const prefix = vaultId.endsWith('/') ? vaultId : `${vaultId}/`;
-    
+    const prefix = vaultId.endsWith("/") ? vaultId : `${vaultId}/`;
+
     const data = await r2.send(new ListObjectsV2Command({ 
       Bucket: BUCKET, 
       Prefix: prefix 
@@ -130,7 +99,16 @@ app.get("/api/vaults/:id", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── INDEXING STORAGE ─────────────────────────────────────────────────────────
+// ── INDEX ROUTES ─────────────────────────────────────────────────────────────
+app.get("/api/vaults/:id/index", async (req, res) => {
+  try {
+    const vaultId = decodeURIComponent(req.params.id);
+    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${vaultId}/.index.json` }));
+    const body = await streamToBuffer(data.Body);
+    res.json(JSON.parse(body.toString()));
+  } catch (err) { res.json({ headings: [] }); }
+});
+
 app.post("/api/vaults/:id/index", async (req, res) => {
   try {
     const vaultId = decodeURIComponent(req.params.id);
@@ -144,30 +122,18 @@ app.post("/api/vaults/:id/index", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get("/api/vaults/:id/index", async (req, res) => {
-  try {
-    const vaultId = decodeURIComponent(req.params.id);
-    const data = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${vaultId}/.index.json` }));
-    const body = await streamToBuffer(data.Body);
-    res.json(JSON.parse(body.toString()));
-  } catch (err) { res.json({ headings: [] }); }
-});
-
-// ── PAGE EXTRACTION ──────────────────────────────────────────────────────────
+// ── EXTRACTION ───────────────────────────────────────────────────────────────
 app.post("/api/extract-pages", async (req, res) => {
-  const { base64, pages } = req.body;
   try {
+    const { base64, pages } = req.body;
     const pdfBytes = Buffer.from(base64, "base64");
     const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const totalPages = srcDoc.getPageCount();
-    const pageIndices = pages.map(p => p - 1).filter(i => i >= 0 && i < totalPages).sort((a, b) => a - b);
-    
     const extractedDoc = await PDFDocument.create();
-    const copiedPages = await extractedDoc.copyPages(srcDoc, pageIndices);
-    copiedPages.forEach(p => extractedDoc.addPage(p));
-    
-    const extractedBytes = await extractedDoc.save();
-    res.json({ base64: Buffer.from(extractedBytes).toString("base64") });
+    const indices = pages.map(p => p - 1).filter(i => i >= 0 && i < srcDoc.getPageCount());
+    const copied = await extractedDoc.copyPages(srcDoc, indices);
+    copied.forEach(p => extractedDoc.addPage(p));
+    const finalBase64 = Buffer.from(await extractedDoc.save()).toString("base64");
+    res.json({ base64: finalBase64 });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
