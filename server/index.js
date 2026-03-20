@@ -86,7 +86,7 @@ app.post("/api/claude", async (req, res) => {
       body: JSON.stringify({
         contents,
         generationConfig: {
-          maxOutputTokens: max_tokens || 4000,
+          maxOutputTokens: max_tokens || 65000,
           temperature: 0.1,
         }
       }),
