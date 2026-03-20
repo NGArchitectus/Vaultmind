@@ -245,16 +245,16 @@ app.post("/api/extract-pages", async (req, res) => {
   // Attempt 1: mupdf — handles compressed object streams that pdf-lib cannot copy
   // Uses dynamic import() because mupdf is an ES Module
   try {
-    const { default: mupdf } = await import("mupdf");
-    const srcDoc = mupdf.Document.openDocument(pdfBytes, "application/pdf");
+    const mupdf = await import("mupdf");
+    const srcDoc = new mupdf.PDFDocument(pdfBytes);
     const totalPages = srcDoc.countPages();
     const validPages = pageList.filter(p => p <= totalPages);
     if (validPages.length === 0) return res.status(400).json({ error: "No valid pages" });
     const outDoc = new mupdf.PDFDocument();
     for (const pageNum of validPages) {
-      outDoc.graftPage(-1, srcDoc, pageNum - 1);
+      outDoc.graftPage(outDoc.countPages(), srcDoc, pageNum - 1);
     }
-    const outBytes = outDoc.saveToBuffer("compress");
+    const outBytes = outDoc.saveToBuffer("compress,garbage");
     console.log(`mupdf extracted ${validPages.length} pages successfully`);
     return res.json({
       base64: Buffer.from(outBytes).toString("base64"),
