@@ -776,7 +776,7 @@ RULES:
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
         `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Embed full paragraph quotes from the source documents within the answer body. Place the citation directly below each quote. Include ALL relevant information — do not truncate or omit detail.`,
-        16000
+        65000
       );
 
       setProgress(p => ({ ...p, answer: 100 }));
