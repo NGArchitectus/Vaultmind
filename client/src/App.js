@@ -682,15 +682,9 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
           });
           console.log(`Extracted ${result.pagesExtracted} pages from ${docName}`);
         } catch (e) {
-          // Fallback: send the full PDF — Gemini can read it natively
-          // This handles GOV.UK PDFs that pdf-lib cannot process
-          console.warn(`Page extraction failed for ${docName}, sending full PDF instead:`, e.message);
-          totalPagesExtracted += 10; // estimate
-          docBlocks.push({
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: contentsDoc.base64 },
-            title: `${docName} — full document (pdf-lib unavailable)`,
-          });
+          // Page extraction failed — skip this document rather than sending full PDF
+          // Full PDFs would be too large and slow to send to Gemini
+          console.warn(`Page extraction failed for ${docName}, skipping:`, e.message);
         }
       }
 
@@ -776,7 +770,7 @@ RULES:
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
         `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Embed full paragraph quotes from the source documents within the answer body. Place the citation directly below each quote. Include ALL relevant information — do not truncate or omit detail.`,
-        65000
+        16000
       );
 
       setProgress(p => ({ ...p, answer: 100 }));
