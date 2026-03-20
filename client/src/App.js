@@ -394,7 +394,7 @@ export default function App() {
             const indexText = await callClaude(
               [{ role: "user", content: contentBlocks }],
               "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
-              4000
+              16000
             );
             console.log(`Raw index response for ${pdf.name} (first 200 chars):`, indexText.slice(0, 200));
             let parsed = null;
