@@ -226,7 +226,7 @@ app.get("/api/vaults/:vault/index", async (req, res) => {
   }
 });
 
-// ── page extraction — server side for reliable binary handling ────────────────
+// ── page extraction — server side ────────────────────────────────────────────
 app.post("/api/extract-pages", async (req, res) => {
   const { base64, pages } = req.body;
   if (!base64 || !pages || !Array.isArray(pages)) {
@@ -235,22 +235,7 @@ app.post("/api/extract-pages", async (req, res) => {
   try {
     const { PDFDocument } = require("pdf-lib");
     const pdfBytes = Buffer.from(base64, "base64");
-
-    // Load with ignoreEncryption for GOV.UK PDFs
-    let srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-
-    // Some GOV.UK PDFs have broken internal references that cause copyPages to fail.
-    // Fix: re-save the document first, which rebuilds the internal structure cleanly.
-    let workingBytes = pdfBytes;
-    try {
-      const repairedBytes = await srcDoc.save();
-      srcDoc = await PDFDocument.load(repairedBytes, { ignoreEncryption: true });
-      workingBytes = repairedBytes;
-      console.log("PDF repaired successfully");
-    } catch (repairErr) {
-      console.warn("PDF repair failed, using original:", repairErr.message);
-    }
-
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
     const pageIndices = pages
       .map(p => p - 1)
@@ -268,8 +253,20 @@ app.post("/api/extract-pages", async (req, res) => {
       pageNumbers: pageIndices.map(i => i + 1)
     });
   } catch (err) {
-    console.error("Page extraction error:", err.message);
-    res.status(500).json({ error: err.message });
+    // pdf-lib cannot copy pages from some GOV.UK PDFs due to broken internal references.
+    // Fallback: return the full PDF — Gemini can read it natively and find the right pages.
+    console.warn("pdf-lib page extraction failed, returning full PDF as fallback:", err.message);
+    try {
+      res.json({
+        base64: base64,
+        pagesExtracted: pages.length,
+        pageNumbers: pages,
+        fullPdfFallback: true
+      });
+    } catch (fallbackErr) {
+      console.error("Complete extraction failure:", fallbackErr.message);
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
