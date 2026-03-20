@@ -669,37 +669,28 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
         if (pageList.length === 0) continue;
 
         try {
-          // Send to server for reliable server-side extraction
+          // Try server-side page extraction first
           const result = await api("/api/extract-pages", {
             method: "POST",
             body: { base64: contentsDoc.base64, pages: pageList }
           });
-
           totalPagesExtracted += result.pagesExtracted;
           docBlocks.push({
             type: "document",
             source: { type: "base64", media_type: "application/pdf", data: result.base64 },
             title: `${docName} — pages ${result.pageNumbers.join(", ")}`,
           });
+          console.log(`Extracted ${result.pagesExtracted} pages from ${docName}`);
         } catch (e) {
-          console.warn(`Server extraction failed for ${docName}, trying first 10 pages:`, e);
-          // Fallback: ask server for first 10 pages
-          try {
-            const fallbackPages = Array.from({ length: Math.min(10, HARD_PAGE_BUDGET - totalPagesExtracted) }, (_, i) => i + 1);
-            if (fallbackPages.length === 0) continue;
-            const result = await api("/api/extract-pages", {
-              method: "POST",
-              body: { base64: contentsDoc.base64, pages: fallbackPages }
-            });
-            totalPagesExtracted += result.pagesExtracted;
-            docBlocks.push({
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: result.base64 },
-              title: `${docName} — first ${result.pagesExtracted} pages (fallback)`,
-            });
-          } catch (e2) {
-            console.error(`Complete extraction failure for ${docName}:`, e2);
-          }
+          // Fallback: send the full PDF — Gemini can read it natively
+          // This handles GOV.UK PDFs that pdf-lib cannot process
+          console.warn(`Page extraction failed for ${docName}, sending full PDF instead:`, e.message);
+          totalPagesExtracted += 10; // estimate
+          docBlocks.push({
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: contentsDoc.base64 },
+            title: `${docName} — full document (pdf-lib unavailable)`,
+          });
         }
       }
 
