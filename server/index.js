@@ -262,6 +262,9 @@ app.post("/api/extract-pages", async (req, res) => {
       // Insert the grafted page at the end
       outDoc.insertPage(-1, newPageRef);
     }
+    const outPageCount = outDoc.countPages();
+    console.log(`mupdf: inserted ${validPages.length} pages, outDoc has ${outPageCount} pages`);
+    if (outPageCount === 0) throw new Error("mupdf produced empty document");
     const rawBuffer = outDoc.saveToBuffer("compress,garbage");
     const outBytes = Buffer.from(Array.from(rawBuffer));
     console.log(`mupdf extracted ${validPages.length} pages successfully`);
