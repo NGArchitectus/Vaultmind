@@ -251,18 +251,16 @@ app.post("/api/extract-pages", async (req, res) => {
     const validPages = pageList.filter(p => p <= totalPages);
     if (validPages.length === 0) return res.status(400).json({ error: "No valid pages" });
 
-    // Use documented mupdf graftMap approach to copy pages
+    // Use mupdf merge approach — copy selected pages into a new document
     const outDoc = new mupdf.PDFDocument();
-    const dstFromSrc = outDoc.newGraftMap();
+    const graftMap = outDoc.newGraftMap();
     for (const pageNum of validPages) {
-      const srcPage = srcDoc.findPage(pageNum - 1);
-      const dstPage = outDoc.newDictionary();
-      dstPage.put("Type", outDoc.newName("Page"));
-      if (srcPage.get("MediaBox")) dstPage.put("MediaBox", dstFromSrc.graftObject(srcPage.get("MediaBox")));
-      if (srcPage.get("Rotate")) dstPage.put("Rotate", dstFromSrc.graftObject(srcPage.get("Rotate")));
-      if (srcPage.get("Resources")) dstPage.put("Resources", dstFromSrc.graftObject(srcPage.get("Resources")));
-      if (srcPage.get("Contents")) dstPage.put("Contents", dstFromSrc.graftObject(srcPage.get("Contents")));
-      outDoc.insertPage(-1, outDoc.addObject(dstPage));
+      // Find the page object in the source document
+      const pageRef = srcDoc.findPage(pageNum - 1);
+      // Graft (deep copy) the page and all its dependencies into outDoc
+      const newPageRef = graftMap.graftObject(pageRef);
+      // Insert the grafted page at the end
+      outDoc.insertPage(-1, newPageRef);
     }
     const rawBuffer = outDoc.saveToBuffer("compress,garbage");
     const outBytes = Buffer.from(Array.from(rawBuffer));
