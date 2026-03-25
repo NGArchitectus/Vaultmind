@@ -39,6 +39,8 @@ app.post("/api/claude", async (req, res) => {
 
   try {
     const { model, max_tokens, system, messages } = req.body;
+    // Allow frontend to request a specific Gemini model — default to flash
+    const requestedModel = model && model.startsWith("gemini-") ? model : "gemini-2.5-flash";
 
     // Build Gemini contents array from Anthropic-format messages
     const contents = [];
@@ -83,7 +85,7 @@ app.post("/api/claude", async (req, res) => {
       });
     }
 
-    const geminiModel = "gemini-2.5-flash-lite";
+    const geminiModel = requestedModel;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
