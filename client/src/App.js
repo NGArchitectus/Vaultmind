@@ -66,18 +66,18 @@ async function splitPdfIntoChunks(base64Data, chunkSize) {
   }
 }
 
-async function callClaude(messages, systemPrompt, maxTokens = 1000, retries = 2) {
+async function callClaude(messages, systemPrompt, maxTokens = 1000, retries = 2, model = "gemini-2.5-flash") {
   const res = await fetch(`${API_BASE}/api/claude`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gemini-1.5-pro", max_tokens: maxTokens, system: systemPrompt, messages }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, messages }),
   });
 
   // Auto-retry on rate limit with 15 second wait (Gemini recovers faster)
   if (res.status === 429 && retries > 0) {
     console.log(`Rate limit hit, waiting 15 seconds before retry (${retries} retries left)…`);
     await new Promise(r => setTimeout(r, 15000));
-    return callClaude(messages, systemPrompt, maxTokens, retries - 1);
+    return callClaude(messages, systemPrompt, maxTokens, retries - 1, model);
   }
 
   if (!res.ok) {
@@ -394,7 +394,9 @@ export default function App() {
             const indexText = await callClaude(
               [{ role: "user", content: contentBlocks }],
               "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
-              65000
+              65000,
+              2,
+              "gemini-2.5-flash-lite"
             );
             console.log(`Raw index response for ${pdf.name} (first 200 chars):`, indexText.slice(0, 200));
             let parsed = null;
@@ -448,7 +450,9 @@ export default function App() {
       const indexText = await callClaude(
         [{ role: "user", content: contentBlocks }],
         "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
-        65000
+        65000,
+        2,
+        "gemini-2.5-flash-lite"
       );
       let parsed = null;
       const clean = indexText.replace(/```json|```/g, "").trim();
@@ -533,7 +537,9 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
       const scoringText = await callClaude(
         [{ role: "user", content: scoringPrompt }],
         "You are a building regulations expert. Score document sections for relevance using only the text index provided. Return pure JSON only, no markdown.",
-        8000
+        8000,
+        2,
+        "gemini-2.5-flash-lite"
       );
 
       setProgress(p => ({ ...p, select: 100 }));
