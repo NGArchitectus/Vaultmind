@@ -432,6 +432,46 @@ export default function App() {
     }
   };
 
+  // ── single document re-index ────────────────────────────────────────────────
+  const indexSinglePdf = async (pdf) => {
+    if (!vault) return;
+    setStage("indexing");
+    setStatusMsg(`Re-indexing ${pdf.name}…`);
+    setAnswer(null);
+    try {
+      const pdfData = await api(`/api/vaults/${vault.id}/pdfs/${encodeURIComponent(pdf.name)}`);
+      const base64 = pdfData.base64;
+      const contentBlocks = [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 }, title: pdf.name },
+        { type: "text", text: 'Extract ALL structural metadata from this document: every section heading, sub-heading, chapter name, table of contents entry, figure and table caption. Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}' }
+      ];
+      const indexText = await callClaude(
+        [{ role: "user", content: contentBlocks }],
+        "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.",
+        65000
+      );
+      let parsed = null;
+      const clean = indexText.replace(/```json|```/g, "").trim();
+      try { parsed = JSON.parse(clean); } catch {}
+      if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
+      if (!parsed?.headings) throw new Error("Could not parse index response");
+
+      // Merge with existing index — replace this doc's entry
+      const existingDocs = (vaultIndex?.documents || []).filter(d => d.name !== pdf.name);
+      const newDocIndex = { name: pdf.name, headings: parsed.headings };
+      const newIndex = { documents: [...existingDocs, newDocIndex], indexedAt: new Date().toISOString() };
+
+      await api(`/api/vaults/${vault.id}/index`, { method: "POST", body: newIndex });
+      setVaultIndex(newIndex);
+      setStage("done-index");
+      const total = newIndex.documents.reduce((s, d) => s + (d.headings?.length || 0), 0);
+      setStatusMsg(`✓ ${pdf.name} re-indexed — ${parsed.headings.length} sections found. ${total} total sections across vault.`);
+    } catch (e) {
+      setStage(null);
+      setStatusMsg(`Re-index failed for ${pdf.name}: ${e.message}`);
+    }
+  };
+
   // ── question answering — 3-pass pipeline ────────────────────────────────────
   const askQuestion = async () => {
     if (!vaultIndex || !question.trim()) return;
@@ -931,6 +971,10 @@ RULES:
                             <div style={{ fontSize: 12, color: "#0b0c0c", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pdf.name}</div>
                             <div style={{ fontSize: 10, color: "#6f777b", marginTop: 1 }}>{(pdf.size / 1024).toFixed(0)} KB</div>
                           </div>
+                          <button className="btn" onClick={() => indexSinglePdf(pdf)} disabled={isRunning} title="Re-index this document"
+                            style={{ background: "none", color: "#6f777b", fontSize: 11, padding: "2px 4px", lineHeight: 1, flexShrink: 0, fontWeight: 700 }}
+                            onMouseEnter={e => e.target.style.color = "#4a7c20"}
+                            onMouseLeave={e => e.target.style.color = "#6f777b"}>↻</button>
                           <button className="btn" onClick={() => deletePdf(pdf)} disabled={isRunning} title="Remove"
                             style={{ background: "none", color: "#6f777b", fontSize: 15, padding: "2px 4px", lineHeight: 1, flexShrink: 0, fontWeight: 700 }}
                             onMouseEnter={e => e.target.style.color = "#d4351c"}
