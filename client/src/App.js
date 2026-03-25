@@ -700,76 +700,79 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
         .flatMap(d => (d.sections || []).map(s => `${d.docName}: ${s.heading} (p.${s.pageHint})`))
         .join("; ");
 
-      const answerPrompt = `You are an expert building regulations consultant answering a question using ONLY the provided regulatory documents.
+      const answerPrompt = `You are an expert building regulations consultant at an architectural practice. Answer the question using ONLY the provided regulatory documents.
 
-CRITICAL: You must ONLY use information from the documents provided. Do not use any external knowledge or information from outside these specific documents. If the answer cannot be found in these documents, say so explicitly.
+CRITICAL: Use ONLY information from the documents provided. Do not use any external knowledge. If the answer cannot be found in these documents, say so explicitly.
 
 VAULT: ${vault.name}
 VAULT DOCUMENTS: ${vaultDocNames}
 QUESTION: ${q}
 PRIORITY SECTIONS IDENTIFIED: ${focusSections || "all sections"}
 
+---
+
 RESPONSE STRUCTURE — follow this exact structure every time:
 
 ## Summary
-Write 2-4 sentences giving a direct, concise answer in plain English. This should stand alone as a complete answer for someone who needs a quick response.
+
+Give a direct, concise answer in plain English that an architect can act on immediately. This section must:
+- Answer the question directly in the opening sentence
+- Include a summary table if the answer involves any dimensions, measurements, ratings or comparative requirements across building types — use the format below
+- Include a citation for every piece of information stated
+
+SUMMARY TABLE FORMAT (use whenever dimensions, measurements or comparative data are involved):
+| Building / Stair Type | Requirement | Value | Document |
+|---|---|---|---|
+| Example | Example | Example | Example |
+
+CITATION FORMAT for the summary section — inline, immediately after the relevant statement:
+*[Document Name] | Page [X] | Section [X.X] — [Heading]*
 
 ---
 
 ## Detailed Analysis
 
-Write a thorough, fully reasoned analysis. Use the same headings, section numbers and terminology as the source documents.
+Provide a thorough analysis organised by document and section, using the same headings, section numbers and terminology as the source documents.
 
-COMPLETENESS: Include ALL relevant information from the provided pages. Do not truncate, summarise or skip requirements. If a section contains multiple relevant points, include every one of them.
+For each relevant point follow this structure exactly:
+1. A plain English sentence explaining the requirement and its purpose
+2. The full relevant paragraph quoted exactly from the document as a block quote — do not paraphrase or truncate
+3. The citation on its own line immediately below the quote
 
-STRUCTURE FOR EACH POINT:
-1. Introduce the requirement or topic with a clear explanatory sentence in plain English — explain what it means and why it exists
-2. Embed the full relevant paragraph(s) from the document directly into the body of the answer as a block quote
-3. Place the citation on the line immediately below the quote
+QUOTE FORMAT:
+> "[Full paragraph exactly as it appears in the document]"
 
-QUOTE FORMAT — embed full paragraphs from the source document as block quotes within the answer:
-> "[Full paragraph or sentence exactly as it appears in the document — do not truncate or paraphrase]"
-
-CITATION FORMAT — immediately below each quote, on its own line:
+CITATION FORMAT — on its own line immediately below each quote:
 > *[Document Name] | Page [X] | Section [X.X] — [Heading]*
 
-Use:
-- **Sub-headings (###)** matching section headings from the source document
-- **Bold** for defined terms, regulation numbers and critical requirements
-- **Bullet points** only for lists of specific items within a section
+Use ### sub-headings matching the source document section headings.
+Use **bold** for regulation numbers, defined terms and critical dimensional requirements.
+Use bullet points only for lists of discrete items within a section.
 
-TABLES — create a summary table whenever the answer involves ANY of the following:
-- Minimum or maximum dimensions, heights, widths, areas or distances
-- Fire resistance ratings, performance classifications or test standards
-- Different requirements for different building types, occupancy classes or use cases
-- Comparisons between two or more options, methods or specifications
-- Checklists of requirements that must all be met
-- Any data that appears in a table in the source document
-
-Table format — always include a header row and use the same column names as the source document where possible:
-| Requirement | Value | Notes |
-|---|---|---|
-| Example | Example | Example |
-
-Place the summary table AFTER the relevant section heading and BEFORE the detailed quotes, so the reader gets an at-a-glance overview first, then the full detail below.
+Include ALL relevant requirements — do not omit detail to save space.
 
 ---
 
 ## Contradictions & Conflicts
-List any contradictions, conflicts or ambiguities found between sections or documents, with the relevant quotes and citations for each. If none found, write "No contradictions identified."
+
+Identify any contradictions, conflicts or ambiguities between documents or sections. For each:
+- State what the conflict is in plain English
+- Quote the relevant passage from each conflicting source with its citation
+- Give a reasoned conclusion on how the conflict should be resolved in practice, based on hierarchy of documents, specificity of guidance, or building type applicability
+
+If no contradictions are found, write: "No contradictions identified between the documents provided."
 
 ---
 
 RULES:
 - Use ONLY information from the provided documents — no external knowledge
-- Include ALL relevant requirements — never omit detail to save space
+- Every factual statement must have a citation
 - Quote full paragraphs, not fragments
-- Every quote must have a citation directly below it
 - If the documents do not contain enough information to fully answer, state this explicitly`;
 
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
-        `You are an expert building regulations consultant. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Embed full paragraph quotes from the source documents within the answer body. Place the citation directly below each quote. Include ALL relevant information — do not truncate or omit detail.`,
+        `You are an expert building regulations consultant at an architectural practice. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Structure your response with: (1) a concise summary with a table and inline citations, (2) detailed analysis with full paragraph quotes and citations on separate lines below each quote, (3) contradictions section with reasoned conclusions. Every factual statement must have a citation.`,
         65536
       );
 
