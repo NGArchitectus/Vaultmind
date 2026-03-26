@@ -746,82 +746,75 @@ IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "1
         .flatMap(d => (d.sections || []).map(s => `${d.docName}: ${s.heading} (p.${s.pageHint})`))
         .join("; ");
 
-      const answerPrompt = `You are an expert building regulations consultant at an architectural practice. Answer the question using ONLY the provided regulatory documents.
-
-CRITICAL: Use ONLY information from the documents provided. Do not use any external knowledge. If the answer cannot be found in these documents, say so explicitly.
+      const answerPrompt = `You are an expert building regulations consultant at an architectural practice answering a specific technical question. Use ONLY the provided document pages.
 
 VAULT: ${vault.name}
-VAULT DOCUMENTS: ${vaultDocNames}
 QUESTION: ${q}
 PRIORITY SECTIONS IDENTIFIED: ${focusSections || "all sections"}
 
 ---
 
-RESPONSE STRUCTURE — follow this exact structure every time:
+INSTRUCTIONS:
 
-## Summary
-
-Write a concise conclusion drawn directly from the detailed analysis below — this should read as the reasoned answer, not a standalone statement. It must:
-- State the conclusion clearly in the opening sentence, referencing the key evidence that supports it
-- Explain briefly WHY the answer is what it is, based on the documents
-- Include a summary table if the answer involves dimensions, measurements or comparative requirements — use the format below
-- Only include information that is supported by the detailed analysis
-
-SUMMARY TABLE FORMAT (use whenever dimensions, measurements or comparative data are involved):
-| Building / Stair Type | Requirement | Value | Document |
-|---|---|---|---|
-| Example | Example | Example | Example |
-
-CITATION FORMAT for the summary section — inline, immediately after the relevant statement:
-*[Document Name] | Page [X] | Section [X.X] — [Heading]*
-
-IMPORTANT: Write the detailed analysis FIRST in your thinking, then write the summary as a conclusion from it. The summary should feel like the last paragraph of a report, not the first.
+Step 1 — Read all provided document pages carefully and identify every passage directly relevant to the question.
+Step 2 — Build the Detailed Analysis from that evidence.
+Step 3 — Write the Summary as a confident, definitive conclusion drawn from that analysis.
 
 ---
 
 ## Detailed Analysis
 
-Provide a thorough analysis organised by document and section, using the same headings, section numbers and terminology as the source documents.
+Organise by document. For each relevant section:
 
-For each relevant point follow this structure exactly:
-1. A plain English sentence explaining the requirement and its purpose
-2. The full relevant paragraph quoted exactly from the document as a block quote — do not paraphrase or truncate
-3. The citation on its own line immediately below the quote
+1. One plain English sentence introducing what this section establishes and why it is relevant to the question
+2. The exact quoted passage from the document as a block quote
+3. The citation on its own line immediately below
 
 QUOTE FORMAT:
-> "[Full paragraph exactly as it appears in the document]"
+> "[Exact text from document — do not paraphrase or truncate]"
 
-CITATION FORMAT — on its own line immediately below each quote:
+CITATION FORMAT (own line below quote):
 > *[Document Name] | Page [X] | Section [X.X] — [Heading]*
 
-Use ### sub-headings matching the source document section headings.
-Use **bold** for regulation numbers, defined terms and critical dimensional requirements.
-Use bullet points only for lists of discrete items within a section.
+Use ### sub-headings matching source document section headings.
+Use **bold** for regulation numbers, defined terms, and critical requirements.
+Only include sections that directly answer the question — omit anything tangential.
 
-Include ALL requirements that directly answer the question. Do not include tangentially related sections unless they materially affect the answer. Quality over quantity — a focused, accurate answer is better than an exhaustive one.
+---
+
+## Summary
+
+A confident, definitive answer in 2–4 sentences. This must:
+- State the answer directly and definitively — do not hedge unless there is genuine ambiguity in the documents
+- Explain the reasoning in one sentence referencing the key evidence
+- Include a table if the answer involves dimensions, measurements or comparative requirements
+
+TABLE FORMAT:
+| Type | Requirement | Value | Source |
+|---|---|---|---|
+
+CITATION FORMAT — inline after each statement:
+*[Document Name] | Page [X] | Section [X.X]*
 
 ---
 
 ## Contradictions & Conflicts
 
-Identify any contradictions, conflicts or ambiguities between documents or sections. For each:
-- State what the conflict is in plain English
-- Quote the relevant passage from each conflicting source with its citation
-- Give a reasoned conclusion on how the conflict should be resolved in practice, based on hierarchy of documents, specificity of guidance, or building type applicability
+If conflicts exist between documents: state the conflict in one sentence, quote both sides with citations, then give a definitive practical conclusion on which takes precedence and why.
 
-If no contradictions are found, write: "No contradictions identified between the documents provided."
+If no conflicts: write "No contradictions identified."
 
 ---
 
 RULES:
-- Use ONLY information from the provided documents — no external knowledge
+- Use ONLY the provided document pages — no external knowledge
 - Every factual statement must have a citation
-- Quote full paragraphs, not fragments
-- If the documents do not contain enough information to fully answer, state this explicitly`;
+- If a page number or section reference is unclear from the document, omit the citation rather than guess
+- If the provided pages do not contain enough information to answer definitively, state exactly what is missing and why`;
 
       const finalAnswer = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
-        `You are an expert building regulations consultant at an architectural practice. Answer using ONLY documents from the "${vault.name}" vault. Never use external knowledge. Structure your response with: (1) a concise summary with a table and inline citations, (2) detailed analysis with full paragraph quotes and citations on separate lines below each quote, (3) contradictions section with reasoned conclusions. Every factual statement must have a citation.`,
+        `You are an expert building regulations consultant at an architectural practice. Answer using ONLY the provided document pages. Give definitive answers. Structure: (1) Detailed Analysis with exact quotes and citations, (2) Summary as a confident conclusion with table if relevant, (3) Contradictions with practical resolution. Never hedge unless genuine ambiguity exists in the documents.`,
         65536
       );
 
