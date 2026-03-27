@@ -776,7 +776,7 @@ CITATION FORMAT — inline after each statement:
 
 Organise by document and section. For each relevant passage:
 
-1. One plain English sentence introducing what this section establishes and why it is relevant
+1. A plain English explanation of what this section establishes, why it is relevant to the question, and what practical implication it has for the architect or designer — write 2-3 sentences, not just one. Explain the context, purpose and consequence of the requirement in plain language that a non-specialist could follow.
 2. The exact quoted passage as a block quote — do not paraphrase or truncate
 3. The citation on its own line immediately below
 
