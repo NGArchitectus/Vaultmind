@@ -511,35 +511,29 @@ QUESTION: ${q}
 
 Analyse the index carefully. For every section that could possibly be relevant — even tangentially — assign a probability score. Building regulations frequently contain cross-references, exceptions and caveats in unexpected sections. Be CONSERVATIVE — it is better to include a borderline section than to miss critical information.
 
-Respond ONLY as JSON — no other text:
+Respond ONLY as compact JSON — no other text, no explanations, no reasons:
 {
-  "styleNotes": "brief description of document style and terminology",
   "selectedDocs": [
     {
-      "docName": "exact document filename as it appears in the index",
-      "reason": "why this document is relevant",
+      "docName": "exact filename from index",
       "sections": [
-        {
-          "heading": "exact section heading from index",
-          "pageHint": 42,
-          "probability": 0.95,
-          "reason": "why this section is relevant",
-          "crossRefs": ["other section headings this likely cross-references"]
-        }
+        {"heading": "exact heading from index", "pageHint": 42, "probability": 0.95}
       ]
     }
   ]
 }
 
-Include ALL sections with probability > 0.3. Always include page numbers where available in the index.
-IMPORTANT: pageHint MUST be a plain integer (e.g. 42) or a range string (e.g. "12-15"). Never use text like "p.12" or "page 12". If no page number is known, use 1.`;
+Rules:
+- Include sections with probability > 0.3
+- pageHint MUST be a plain integer. Never use "p.12" or "page 12". Use 1 if unknown.
+- Omit "styleNotes", "reason" and "crossRefs" fields entirely — keep JSON compact`;
 
       const scoringText = await callClaude(
         [{ role: "user", content: scoringPrompt }],
         "You are a building regulations expert. Score document sections for relevance using only the text index provided. Return pure JSON only, no markdown.",
         65000,
         2,
-        "gemini-2.5-flash-lite"
+        "gemini-2.5-flash"
       );
 
       setProgress(p => ({ ...p, select: 100 }));
