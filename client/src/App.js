@@ -518,10 +518,10 @@ export default function App() {
       }).join("\n\n");
       setProgress(p => ({ ...p, select: 30 }));
 
-      // Build recent conversation context (last 3 exchanges)
-      const recentHistory = conversationHistory.slice(-3);
+      // Build full conversation context — keep all exchanges in session
+      const recentHistory = conversationHistory.slice(-5);
       const conversationContext = recentHistory.length > 0
-        ? `\n\nCONVERSATION HISTORY (for context only — the current question may be a follow-up):\n${recentHistory.map((h, i) => `Q${i+1}: ${h.question}\nA${i+1}: ${h.answer.slice(0, 300)}…`).join("\n\n")}`
+        ? `\n\nCONVERSATION HISTORY (this is a continuing conversation — the current question may be a follow-up to earlier questions):\n${recentHistory.map((h, i) => `Q${i+1}: ${h.question}\nA${i+1}: ${h.answer.slice(0, 600)}…`).join("\n\n")}`
         : "";
 
       const scoringPrompt = `You are an expert building regulations analyst. Using ONLY the document index below, identify which specific sections and pages are most likely to contain the answer to the question.
@@ -768,7 +768,7 @@ Rules:
 
 VAULT: ${vault.name}
 QUESTION: ${q}
-${conversationHistory.slice(-3).length > 0 ? `\nCONVERSATION HISTORY (use this to understand follow-up questions):\n${conversationHistory.slice(-3).map((h, i) => `Q${i+1}: ${h.question}\nA${i+1} (summary): ${h.answer.slice(0, 500)}…`).join("\n\n")}\n` : ""}PRIORITY SECTIONS IDENTIFIED: ${focusSections || "all sections"}
+${conversationHistory.slice(-5).length > 0 ? `\nCONVERSATION HISTORY (this is a continuing conversation — treat the current question in the context of everything discussed so far):\n${conversationHistory.slice(-5).map((h, i) => `Q${i+1}: ${h.question}\nA${i+1}: ${h.answer.slice(0, 800)}…`).join("\n\n")}\n` : ""}PRIORITY SECTIONS IDENTIFIED: ${focusSections || "all sections"}
 
 ---
 
