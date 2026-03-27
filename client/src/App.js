@@ -524,7 +524,7 @@ Respond ONLY as compact JSON — no other text, no explanations, no reasons:
 }
 
 Rules:
-- Include sections with probability > 0.3
+- Include sections with probability > 0.5
 - pageHint MUST be a plain integer. Never use "p.12" or "page 12". Use 1 if unknown.
 - Omit "styleNotes", "reason" and "crossRefs" fields entirely — keep JSON compact`;
 
@@ -623,7 +623,7 @@ Rules:
 
       // Build a ranked list of all sections across all docs, sorted by probability (highest first)
       // This ensures the 90-page budget is spent on the MOST relevant pages first
-      const HARD_PAGE_BUDGET = 50;
+      const HARD_PAGE_BUDGET = 80;
       const allScoredSections = [];
 
       (scoring.selectedDocs || []).forEach(selectedDoc => {
