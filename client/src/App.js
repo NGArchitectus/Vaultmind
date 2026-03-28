@@ -467,7 +467,12 @@ export default function App() {
           const indexText = await callClaude([{ role: "user", content: contentBlocks }], SYSTEM, 65000, 2, "gemini-2.5-flash-lite");
           const parsed = tryParse(indexText);
           if (parsed?.headings) {
-            allHeadings.push(...parsed.headings);
+            // Offset pageHints by the chunk's starting page so they are absolute
+            const offsetHeadings = parsed.headings.map(h => ({
+              ...h,
+              pageHint: (typeof h.pageHint === "number" ? h.pageHint : 1) + startPage
+            }));
+            allHeadings.push(...offsetHeadings);
             console.log(`${pdfName} chunk ${chunk + 1}/${numChunks}: ${parsed.headings.length} headings`);
           }
         } catch (e) {
