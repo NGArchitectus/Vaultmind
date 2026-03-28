@@ -453,7 +453,11 @@ export default function App() {
         const copiedPages = await chunkDoc.copyPages(srcDoc, pageIndices);
         copiedPages.forEach(p => chunkDoc.addPage(p));
         const chunkBytes = await chunkDoc.save();
-        const chunkBase64 = btoa(String.fromCharCode(...new Uint8Array(chunkBytes)));
+        // Safe base64 conversion — spread operator fails on large arrays
+        const chunkUint8 = new Uint8Array(chunkBytes);
+        let chunkBinary = "";
+        for (let b = 0; b < chunkUint8.length; b++) chunkBinary += String.fromCharCode(chunkUint8[b]);
+        const chunkBase64 = btoa(chunkBinary);
 
         try {
           const contentBlocks = [
