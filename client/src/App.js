@@ -1019,22 +1019,49 @@ RULES:
           ) : (
             <>
               {/* Vault header */}
-              <div style={{ padding: "16px 24px", borderBottom: "3px solid #4a7c20", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-                <div>
-                  <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0b0c0c" }}>{vault.name}</h1>
-                  <p style={{ fontSize: 13, color: "#505a5f", marginTop: 2 }}>
-                    {pdfs.length} document{pdfs.length !== 1 ? "s" : ""} &nbsp;·&nbsp;
-                    {vaultIndex
-                      ? <span style={{ color: "#4a7c20", fontWeight: 700 }}>✓ Indexed</span>
-                      : <span style={{ color: "#d4351c" }}>Not indexed</span>}
-                  </p>
+              <div style={{ borderBottom: "3px solid #4a7c20", background: "#ffffff", flexShrink: 0 }}>
+                <div style={{ padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0b0c0c" }}>{vault.name}</h1>
+                    <p style={{ fontSize: 13, color: "#505a5f", marginTop: 2 }}>
+                      {pdfs.length} document{pdfs.length !== 1 ? "s" : ""} &nbsp;·&nbsp;
+                      {vaultIndex
+                        ? <span style={{ color: "#4a7c20", fontWeight: 700 }}>✓ Indexed</span>
+                        : <span style={{ color: "#d4351c" }}>Not indexed</span>}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {/* Temp doc button */}
+                    <div style={{ position: "relative" }}>
+                      {tempDoc ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff8e1", border: "1px solid #ffdd00", padding: "7px 14px" }}>
+                          <span style={{ fontSize: 13, color: "#594d00", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {tempDoc.name}</span>
+                          <button className="btn" onClick={() => setTempDoc(null)} title="Remove temporary document"
+                            style={{ background: "none", color: "#6f777b", fontSize: 16, padding: "0 2px", fontWeight: 700, lineHeight: 1 }}
+                            onMouseEnter={e => e.target.style.color = "#d4351c"}
+                            onMouseLeave={e => e.target.style.color = "#6f777b"}>×</button>
+                        </div>
+                      ) : (
+                        <div
+                          onDragOver={e => { e.preventDefault(); setTempDocDragOver(true); }}
+                          onDragLeave={() => setTempDocDragOver(false)}
+                          onDrop={e => { e.preventDefault(); setTempDocDragOver(false); const f = e.dataTransfer.files[0]; if (f) loadTempDoc(f); }}
+                          onClick={() => tempDocInputRef.current.click()}
+                          style={{ border: `2px dashed ${tempDocDragOver ? "#4a7c20" : "#b1b4b6"}`, padding: "7px 16px", cursor: "pointer", background: tempDocDragOver ? "#f0f4e8" : "#f9f9f9", display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 13, color: "#505a5f" }}>📎 Add temporary document</span>
+                          <span style={{ fontSize: 11, color: "#6f777b" }}>— not saved</span>
+                          <input ref={tempDocInputRef} type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) loadTempDoc(e.target.files[0]); }} />
+                        </div>
+                      )}
+                    </div>
+                    {pdfs.length > 0 && (
+                      <button className="btn" onClick={indexVault} disabled={isRunning}
+                        style={{ background: vaultIndex ? "#f3f2f1" : "#4a7c20", color: vaultIndex ? "#0b0c0c" : "#ffffff", border: vaultIndex ? "1px solid #b1b4b6" : "none", padding: "9px 20px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                        {stage === "indexing" ? <><Spinner size={13} /> Indexing…</> : vaultIndex ? "Re-index Vault" : "Index Vault"}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {pdfs.length > 0 && (
-                  <button className="btn" onClick={indexVault} disabled={isRunning}
-                    style={{ background: vaultIndex ? "#f3f2f1" : "#4a7c20", color: vaultIndex ? "#0b0c0c" : "#ffffff", border: vaultIndex ? "1px solid #b1b4b6" : "none", padding: "9px 20px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
-                    {stage === "indexing" ? <><Spinner size={13} /> Indexing…</> : vaultIndex ? "Re-index Vault" : "Index Vault"}
-                  </button>
-                )}
               </div>
 
               <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -1053,33 +1080,6 @@ RULES:
                       </>
                     )}
                     <input ref={fileInputRef} type="file" multiple accept="application/pdf" style={{ display: "none" }} onChange={e => addPDFs(e.target.files)} />
-                  </div>
-
-                  {/* Temp doc upload — in memory only, cleared on refresh */}
-                  <div style={{ margin: "8px 12px 0", borderTop: "1px solid #e8e8e8", paddingTop: 8 }}>
-                    <div style={{ fontSize: 10, color: "#505a5f", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                      Temporary Document
-                    </div>
-                    {tempDoc ? (
-                      <div style={{ background: "#fff8e1", border: "1px solid #ffdd00", padding: "6px 10px", display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 11, color: "#594d00", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {tempDoc.name}</span>
-                        <button className="btn" onClick={() => setTempDoc(null)} title="Remove temp document"
-                          style={{ background: "none", color: "#6f777b", fontSize: 14, padding: "0 2px", fontWeight: 700 }}
-                          onMouseEnter={e => e.target.style.color = "#d4351c"}
-                          onMouseLeave={e => e.target.style.color = "#6f777b"}>×</button>
-                      </div>
-                    ) : (
-                      <div
-                        onDragOver={e => { e.preventDefault(); setTempDocDragOver(true); }}
-                        onDragLeave={() => setTempDocDragOver(false)}
-                        onDrop={e => { e.preventDefault(); setTempDocDragOver(false); const f = e.dataTransfer.files[0]; if (f) loadTempDoc(f); }}
-                        onClick={() => tempDocInputRef.current.click()}
-                        style={{ border: `2px dashed ${tempDocDragOver ? "#4a7c20" : "#b1b4b6"}`, padding: "10px 8px", textAlign: "center", cursor: "pointer", background: tempDocDragOver ? "#f0f4e8" : "#fafafa", fontSize: 11, color: "#505a5f", lineHeight: 1.5 }}>
-                        Drop a PDF here for<br />temporary review
-                        <input ref={tempDocInputRef} type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) loadTempDoc(e.target.files[0]); }} />
-                      </div>
-                    )}
-                    <p style={{ fontSize: 10, color: "#6f777b", marginTop: 4, lineHeight: 1.4 }}>Not saved — deleted on page refresh</p>
                   </div>
 
                   <div style={{ flex: 1, overflowY: "auto" }}>
