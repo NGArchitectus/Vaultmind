@@ -433,7 +433,7 @@ export default function App() {
 - Any text that acts as a label or identifier for a block of content below it
 - Appendix titles, figure captions, table headings
 
-For each item, record the PDF page position where it physically appears (page 1 = first page of this PDF file). Do NOT use printed page numbers — use only the physical PDF page position.
+CRITICAL — PAGE NUMBERING: This document uses per-chapter page numbering, meaning each chapter restarts from page 1. The printed page numbers on each page are UNRELIABLE and must be completely ignored. You must count pages by their physical position in THIS PDF file only — page 1 is the first page of the file, page 2 is the second, and so on. Never use any number printed on the page itself.
 
 Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}`;
 
@@ -491,7 +491,7 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
         setStatusMsg(`Indexing ${pdfName} — pages ${startPage + 1}–${endPage} of ${pageCount}…`);
         const { base64: chunkBase64 } = await extractPdfPages(base64, Array.from({ length: endPage - startPage }, (_, i) => startPage + i));
         try {
-          const chunkPrompt = INDEX_PROMPT + ` IMPORTANT: These are PDF pages ${startPage + 1}–${endPage} of the full document. You must add ${startPage} to every page position you observe within this chunk to get the correct absolute PDF page number. For example, if a heading appears on page 3 of this chunk and startPage is ${startPage}, the pageHint should be ${startPage + 3}.`;
+          const chunkPrompt = INDEX_PROMPT + ` IMPORTANT: These are physical PDF pages ${startPage + 1}–${endPage} of the full document (counting from the very first page of the complete PDF file). The printed page numbers on these pages are per-chapter and must be completely ignored. To calculate the correct pageHint: take the physical position of the page within this chunk (1 = first page of this chunk) and add ${startPage}. For example, the 3rd page of this chunk has pageHint ${startPage + 3}. The 10th page has pageHint ${startPage + 10}.`;
           const result = await callClaude(
             [{ role: "user", content: [
               { type: "document", source: { type: "base64", media_type: "application/pdf", data: chunkBase64 } },
