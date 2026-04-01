@@ -423,17 +423,9 @@ export default function App() {
   // occurrences over table of contents references.
   const indexOnePdf = async (pdfName, base64) => {
     const SYSTEM = "You are a document indexer. Extract only structural metadata. Return pure JSON only, no markdown, no explanation.";
-    const INDEX_PROMPT = `Extract ALL headings and section identifiers from this document. Cast the net wide — include anything that could be a heading or section marker:
+    const INDEX_PROMPT = `Extract structural headings from this document — chapter titles, numbered sections (e.g. 6.6, 6.6.1), and named sub-sections. Do not extract body text, bullet points, figure captions, or table content — only headings that introduce a section of content.
 
-- Numbered sections of any format: 6.6, 6.6.1, R1, D5, Part 2, Chapter 3, Section 4.2
-- Bold or large text that introduces a topic or section
-- Text that appears at the top of a page or at the start of a section with whitespace around it
-- Chapter or part title pages — even if the title appears over an image or graphic
-- Requirement statements (e.g. "Requirement K1:", "Technical Requirement R3")
-- Any text that acts as a label or identifier for a block of content below it
-- Appendix titles, figure captions, table headings
-
-CRITICAL — PAGE NUMBERING: This document uses per-chapter page numbering, meaning each chapter restarts from page 1. The printed page numbers on each page are UNRELIABLE and must be completely ignored. You must count pages by their physical position in THIS PDF file only — page 1 is the first page of the file, page 2 is the second, and so on. Never use any number printed on the page itself.
+For pageHint, use only the position of the page within this PDF file — page 1 is the first page of this file, page 2 is the second, etc. Ignore all printed page numbers on the pages.
 
 Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}`;
 
@@ -491,7 +483,11 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
         setStatusMsg(`Indexing ${pdfName} — pages ${startPage + 1}–${endPage} of ${pageCount}…`);
         const { base64: chunkBase64 } = await extractPdfPages(base64, Array.from({ length: endPage - startPage }, (_, i) => startPage + i));
         try {
-          const chunkPrompt = INDEX_PROMPT + ` IMPORTANT: These are physical PDF pages ${startPage + 1}–${endPage} of the full document (counting from the very first page of the complete PDF file). The printed page numbers on these pages are per-chapter and must be completely ignored. To calculate the correct pageHint: take the physical position of the page within this chunk (1 = first page of this chunk) and add ${startPage}. For example, the 3rd page of this chunk has pageHint ${startPage + 3}. The 10th page has pageHint ${startPage + 10}.`;
+          const chunkPrompt = `Extract structural headings from this document — chapter titles, numbered sections (e.g. 6.6, 6.6.1), and named sub-sections. Do not extract body text, bullet points, or table content.
+
+For pageHint, use only the page number within this chunk — page 1 is the first page of this chunk, page 2 is the second, up to page ${endPage - startPage}. Ignore all printed page numbers on the pages completely.
+
+Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}`;
           const result = await callClaude(
             [{ role: "user", content: [
               { type: "document", source: { type: "base64", media_type: "application/pdf", data: chunkBase64 } },
@@ -501,8 +497,14 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
           );
           const parsed = tryParse(result);
           if (parsed?.headings) {
-            allHeadings.push(...parsed.headings);
-            console.log(`${pdfName} chunk ${chunk + 1}/${numChunks}: ${parsed.headings.length} headings`);
+            // Always recalculate absolute page position ourselves —
+            // Gemini returns chunk-relative page (1-60), we add startPage
+            const offsetHeadings = parsed.headings.map(h => ({
+              ...h,
+              pageHint: Math.max(1, (h.pageHint || 1) + startPage)
+            }));
+            allHeadings.push(...offsetHeadings);
+            console.log(`${pdfName} chunk ${chunk + 1}/${numChunks}: ${parsed.headings.length} headings (pages ${startPage + 1}–${endPage})`);
           }
         } catch (e) {
           console.warn(`${pdfName} chunk ${chunk + 1} failed:`, e.message);
