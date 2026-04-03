@@ -201,16 +201,25 @@ function AnswerRenderer({ text }) {
     } else if (line.startsWith("> ")) {
       const quoteText = line.slice(2);
       const isCitation = quoteText.startsWith("*") && quoteText.endsWith("*");
+      const isTableRow = quoteText.startsWith("|");
+      const isSeparatorRow = quoteText.match(/^\|[\s:|-]+\|/);
       if (isCitation) {
+        // Citation — italic plain text, no box
         elements.push(
-          <p key={i} style={{ fontSize: 12, color: "#555", fontStyle: "italic", margin: "3px 0 12px 16px", fontFamily: "Arial, sans-serif" }}>
+          <p key={i} style={{ fontSize: 11, color: "#9a9088", fontStyle: "italic", margin: "2px 0 10px 0", fontFamily: "Inter, Arial, sans-serif", letterSpacing: "0.01em" }}>
             {quoteText.slice(1, -1)}
           </p>
         );
+      } else if (isTableRow && !isSeparatorRow) {
+        // Table row inside a quote — add to table buffer so it renders as a proper table
+        inTable = true; tableBuffer.push(quoteText);
+      } else if (isSeparatorRow) {
+        // Table separator row — add to buffer
+        if (inTable) tableBuffer.push(quoteText);
       } else {
-        // Document quote — green left border, light green background like AD requirement boxes
+        // Regular document quote — plain left border, no coloured background
         elements.push(
-          <div key={i} style={{ borderLeft: `2px solid #b8d4da`, background: "#f5f9fa", padding: "12px 16px", margin: "10px 0 4px", fontStyle: "normal", fontSize: 13, color: "#3a4a55", lineHeight: 1.8, fontFamily: "Inter, Arial, sans-serif" }}>
+          <div key={i} style={{ borderLeft: `2px solid #d0ccc8`, padding: "2px 0 2px 14px", margin: "4px 0", fontStyle: "italic", fontSize: 13, color: "#4a5568", lineHeight: 1.8, fontFamily: "Inter, Arial, sans-serif" }}>
             {quoteText}
           </div>
         );
@@ -941,37 +950,40 @@ WRITE THIS FIRST. A confident, definitive answer in 2–4 sentences directly add
 - Build logically on any prior questions in the conversation where relevant
 - Include a table if the source document contains a table relevant to the question
 
-CRITICAL TABLE RULE: Reproduce the source table exactly as it appears — same columns, same rows, same structure. Do NOT reformat, split, or restructure it. Do NOT add columns that don't exist in the source. If the source table has 3 rows and 3 columns, your table must have exactly 3 rows and 3 columns. You may append a Source column at the end only.
+CRITICAL TABLE RULE: Reproduce the source table exactly — same columns, same rows, same structure. Do NOT reformat or restructure it. Do NOT wrap tables in > block quote syntax — output them as plain markdown tables only.
 
-After every table, include as a block quote any qualifying text, footnotes or exceptions that appear immediately before or after the table in the source — these are often critical to correct interpretation. Cite these notes separately.
+After every table, include as a plain italic citation on its own line, then any qualifying footnotes or exceptions from the source as a block quote.
 
-CITATION FORMAT — inline after each statement:
+CITATION FORMAT — italic plain text on its own line, NOT inside a block quote:
 *Document Name | Page X | Section X.X*
 
 ---
 
 ## Detailed Analysis
 
-WRITE THIS SECOND. Do NOT repeat what is already in the summary. Instead use this section to:
-- Explain the reasoning and intent behind the requirements — why they exist, what risk they mitigate
-- Provide context from surrounding clauses that affects how the requirement should be applied in practice
-- Flag any cross-references, conditions, or exceptions that qualify the headline figure
-- Include any other content on the same pages that is relevant to the question, even if not directly quoted in the summary
+WRITE THIS SECOND — only include content that genuinely adds value beyond the summary. Do not repeat figures or tables already shown above.
 
-For each relevant passage:
-1. 2–3 sentences explaining the purpose or context of this requirement and its practical implication for the architect — go beyond restating the text, explain what it means and why it matters
-2. The exact quoted passage as a block quote
-3. A citation on its own line in italic
+This section should contain only:
+- Reasoning or intent behind a requirement (why it exists, what risk it addresses)
+- Conditions, exceptions or qualifications that affect how the requirement applies in practice
+- Cross-references to other clauses or standards the architect must also consult
+- Any additional relevant content from the extracted pages not already covered in the summary
 
-QUOTE FORMAT:
-> Exact text from document — do not paraphrase or truncate
+If the summary already fully answers the question with nothing meaningful to add, write only: "The summary above fully addresses this question."
 
-CITATION FORMAT — italic, on its own line immediately below each quote:
+For each passage that adds value:
+1. One sentence explaining what additional insight this provides and why it matters practically
+2. The exact quoted passage — do not paraphrase, do not wrap in > block quotes
+3. A citation on its own line in italic immediately below
+
+QUOTE FORMAT — plain indented text, no > prefix:
+   Exact text from document
+
+CITATION FORMAT — italic, own line immediately below:
 *Document Name | Page X | Section X.X — Heading*
 
 Use ### sub-headings matching source document section headings.
 Use **bold** for defined terms and critical requirements.
-Only include passages that directly answer or qualify the question — no padding.
 
 ---
 
