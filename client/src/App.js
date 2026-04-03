@@ -939,11 +939,15 @@ WRITE THIS FIRST. A confident, definitive answer in 2–4 sentences directly add
 - Open with a direct answer in plain English
 - Reference the key evidence briefly
 - Build logically on any prior questions in the conversation where relevant
-- Include a table if dimensions, measurements or comparative requirements are involved
+- Include a table whenever the document contains a table relevant to the question
 
-TABLE FORMAT:
+CRITICAL TABLE RULE: When a source table has multiple rows (e.g. different stair types, jurisdictions, occupancy types), you MUST reproduce ALL rows — never show only the most common case. Omitting rows in a regulatory context is dangerous. If a table covers private stairs AND common stairs, both rows must appear. If a table covers multiple jurisdictions, all must appear.
+
+TABLE FORMAT — reproduce every applicable row from the source:
 | Type | Requirement | Value | Source |
 |---|---|---|---|
+
+After every table, include any qualifying text, footnotes, exceptions or sub-clauses that appear immediately before or after the table in the source document. Quote this context as a block quote directly below the table with a citation — these notes are often critical to correct interpretation.
 
 CITATION FORMAT — inline after each statement:
 *[Document Name] | Page [X] | Section [X.X]*
@@ -966,7 +970,7 @@ CITATION FORMAT (own line below each quote):
 
 Use ### sub-headings matching source document section headings.
 Use **bold** for regulation numbers, defined terms and critical requirements.
-Only include passages that directly answer the question.
+Only include passages that directly answer the question. Where a table is referenced or quoted, always include the surrounding paragraph text and any footnotes or qualifying statements that appear before or after the table in the source — these often contain exceptions, conditions or cross-references essential to correct interpretation. Quote these as block quotes with citations immediately below the table.
 
 ---
 
