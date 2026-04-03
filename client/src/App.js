@@ -202,22 +202,20 @@ function AnswerRenderer({ text }) {
       const quoteText = line.slice(2);
       const isCitation = quoteText.startsWith("*") && quoteText.endsWith("*");
       const isTableRow = quoteText.startsWith("|");
-      const isSeparatorRow = quoteText.match(/^\|[\s:|-]+\|/);
+      const isSeparatorRow = /^\|[\s:|-]+\|/.test(quoteText);
       if (isCitation) {
-        // Citation — italic plain text, no box
+        // Citation — plain italic, no box
         elements.push(
-          <p key={i} style={{ fontSize: 11, color: "#9a9088", fontStyle: "italic", margin: "2px 0 10px 0", fontFamily: "Inter, Arial, sans-serif", letterSpacing: "0.01em" }}>
+          <p key={i} style={{ fontSize: 11, color: "#9a9088", fontStyle: "italic", margin: "2px 0 8px 0", fontFamily: "Inter, Arial, sans-serif" }}>
             {quoteText.slice(1, -1)}
           </p>
         );
       } else if (isTableRow && !isSeparatorRow) {
-        // Table row inside a quote — add to table buffer so it renders as a proper table
         inTable = true; tableBuffer.push(quoteText);
       } else if (isSeparatorRow) {
-        // Table separator row — add to buffer
         if (inTable) tableBuffer.push(quoteText);
       } else {
-        // Regular document quote — plain left border, no coloured background
+        // Document quote — simple left indent, no background colour
         elements.push(
           <div key={i} style={{ borderLeft: `2px solid #d0ccc8`, padding: "2px 0 2px 14px", margin: "4px 0", fontStyle: "italic", fontSize: 13, color: "#4a5568", lineHeight: 1.8, fontFamily: "Inter, Arial, sans-serif" }}>
             {quoteText}
@@ -948,42 +946,31 @@ WRITE THIS FIRST. A confident, definitive answer in 2–4 sentences directly add
 - Open with a direct answer in plain English
 - Reference the key evidence briefly
 - Build logically on any prior questions in the conversation where relevant
-- Include a table if the source document contains a table relevant to the question
+- Include a table if the source document contains a table relevant to the question. Reproduce it exactly — same columns, same rows. Do NOT wrap tables in > block quote syntax.
+- After any table, include any footnotes or qualifications from the source as plain italic text beneath it.
 
-CRITICAL TABLE RULE: Reproduce the source table exactly — same columns, same rows, same structure. Do NOT reformat or restructure it. Do NOT wrap tables in > block quote syntax — output them as plain markdown tables only.
-
-After every table, include as a plain italic citation on its own line, then any qualifying footnotes or exceptions from the source as a block quote.
-
-CITATION FORMAT — italic plain text on its own line, NOT inside a block quote:
+CITATION FORMAT — italic plain text on its own line:
 *Document Name | Page X | Section X.X*
 
 ---
 
 ## Detailed Analysis
 
-WRITE THIS SECOND — only include content that genuinely adds value beyond the summary. Do not repeat figures or tables already shown above.
+WRITE THIS SECOND. Two cases only:
 
-This section should contain only:
-- Reasoning or intent behind a requirement (why it exists, what risk it addresses)
-- Conditions, exceptions or qualifications that affect how the requirement applies in practice
-- Cross-references to other clauses or standards the architect must also consult
-- Any additional relevant content from the extracted pages not already covered in the summary
+CASE 1 — If the summary fully covers the answer and there is nothing meaningful to add:
+Write exactly: "The summary above fully addresses this question."
 
-If the summary already fully answers the question with nothing meaningful to add, write only: "The summary above fully addresses this question."
+CASE 2 — If there is additional context, conditions, exceptions or cross-references not already covered in the summary:
+Write a short plain-English explanation in bullet points. Each bullet should be one concise sentence. End each bullet with an italic citation on the same line.
 
-For each passage that adds value:
-1. One sentence explaining what additional insight this provides and why it matters practically
-2. The exact quoted passage — do not paraphrase, do not wrap in > block quotes
-3. A citation on its own line in italic immediately below
-
-QUOTE FORMAT — plain indented text, no > prefix:
-   Exact text from document
-
-CITATION FORMAT — italic, own line immediately below:
-*Document Name | Page X | Section X.X — Heading*
-
-Use ### sub-headings matching source document section headings.
-Use **bold** for defined terms and critical requirements.
+RULES:
+- Do not repeat anything already in the summary
+- Do not use block quotes or coloured boxes — plain bullets only
+- Do not quote large passages from the document — summarise in your own words
+- Citations must be italic inline at the end of each bullet: *Document | Page X | Section X.X*
+- Use plain language an architect can act on immediately
+- Maximum 6 bullets — if you need more the summary needs expanding instead
 
 ---
 
