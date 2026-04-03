@@ -833,13 +833,17 @@ Rules:
         const key = section.docName;
         if (!docPageMap[key]) docPageMap[key] = { contentsDoc: section.contentsDoc, pages: new Set() };
 
-        // Add pages — no buffer, every page counts with tight budget
+        // Add the section page plus the next page — tables and figures
+        // frequently appear on the page immediately after the heading
         const pagesToAdd = [];
         section.pages.forEach(p => {
-          if (!docPageMap[key].pages.has(p)) pagesToAdd.push(p);
+          [0, 1].forEach(offset => {
+            const pg = p + offset;
+            if (pg > 0 && !docPageMap[key].pages.has(pg)) pagesToAdd.push(pg);
+          });
         });
+        pagesToAdd.sort((a, b) => a - b);
 
-        // Only add pages if we have budget remaining
         for (const p of pagesToAdd) {
           if (budgetRemaining <= 0) break;
           docPageMap[key].pages.add(p);
