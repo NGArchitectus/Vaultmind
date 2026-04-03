@@ -939,15 +939,11 @@ WRITE THIS FIRST. A confident, definitive answer in 2–4 sentences directly add
 - Open with a direct answer in plain English
 - Reference the key evidence briefly
 - Build logically on any prior questions in the conversation where relevant
-- Include a table whenever the document contains a table relevant to the question
+- Include a table if the source document contains a table relevant to the question
 
-CRITICAL TABLE RULE: When a source table has multiple rows (e.g. different stair types, jurisdictions, occupancy types), you MUST reproduce ALL rows — never show only the most common case. Omitting rows in a regulatory context is dangerous. If a table covers private stairs AND common stairs, both rows must appear. If a table covers multiple jurisdictions, all must appear.
+CRITICAL TABLE RULE: Reproduce the source table exactly as it appears — same columns, same rows, same structure. Do NOT reformat, split, or restructure it. Do NOT add columns that don't exist in the source. If the source table has 3 rows and 3 columns, your table must have exactly 3 rows and 3 columns. You may append a Source column at the end only.
 
-TABLE FORMAT — reproduce every applicable row from the source:
-| Type | Requirement | Value | Source |
-|---|---|---|---|
-
-After every table, include any qualifying text, footnotes, exceptions or sub-clauses that appear immediately before or after the table in the source document. Quote this context as a block quote directly below the table with a citation — these notes are often critical to correct interpretation.
+After every table, include as a block quote any qualifying text, footnotes or exceptions that appear immediately before or after the table in the source — these are often critical to correct interpretation. Cite these notes separately.
 
 CITATION FORMAT — inline after each statement:
 *[Document Name] | Page [X] | Section [X.X]*
