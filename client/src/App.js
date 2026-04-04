@@ -240,7 +240,17 @@ function AnswerRenderer({ text }) {
     } else if (line === "") {
       elements.push(<div key={i} style={{ height: 10 }} />);
     } else {
-      elements.push(<p key={i} style={{ color: ARC_NAVY, fontSize: 13, lineHeight: 1.8, margin: "6px 0", fontFamily: "Inter, Arial, sans-serif", letterSpacing: "0.01em" }}>{formatInline(line)}</p>);
+      // Check if this is a standalone italic citation line — *text*
+      const isStandaloneCitation = line.startsWith("*") && line.endsWith("*") && line.length > 2 && !line.startsWith("**");
+      if (isStandaloneCitation) {
+        elements.push(
+          <p key={i} style={{ fontSize: 11, color: "#9a9088", fontStyle: "italic", margin: "2px 0 8px 0", fontFamily: "Inter, Arial, sans-serif" }}>
+            {line.slice(1, -1)}
+          </p>
+        );
+      } else {
+        elements.push(<p key={i} style={{ color: ARC_NAVY, fontSize: 13, lineHeight: 1.8, margin: "6px 0", fontFamily: "Inter, Arial, sans-serif", letterSpacing: "0.01em" }}>{formatInline(line)}</p>);
+      }
     }
   });
   if (inTable) flushTable("end");
@@ -953,8 +963,10 @@ WRITE THIS FIRST. A confident, definitive answer in 2–4 sentences directly add
 - Include a table if the source document contains a table relevant to the question. Reproduce it exactly — same columns, same rows. Do NOT wrap tables in > block quote syntax.
 - After any table, include any footnotes or qualifications from the source as plain italic text beneath it.
 
-CITATION FORMAT — italic plain text on its own line:
-*Document Name | Page X | Section X.X*
+CITATION FORMAT — italic plain text on its own line, always cite the most specific clause available:
+*Document Name | Page X | Section X.X.X — Exact Clause Heading*
+
+Never cite just a chapter number (e.g. "Chapter 6.6") — always use the specific subsection (e.g. "6.6.11 Handrails").
 
 ---
 
