@@ -85,20 +85,30 @@ app.post("/api/claude", async (req, res) => {
       });
     }
 
-    const geminiModel = requestedModel;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey}`;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          maxOutputTokens: max_tokens || 65000,
-          temperature: 0.1,
-        }
-      }),
-    });
+    // Abort after 4 minutes — keeps us within Railway's connection window
+    // and returns a clean error rather than a silent 502
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.error("Gemini request aborted — exceeded 4 minute timeout");
+    }, 240000);
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents,
+          generationConfig: { maxOutputTokens: max_tokens || 65000, temperature: 0.1 }
+        }),
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const err = await response.text();
@@ -107,22 +117,29 @@ app.post("/api/claude", async (req, res) => {
     }
 
     const data = await response.json();
-
-    // Convert Gemini response back to Anthropic format so frontend needs no changes
-    // Strip markdown code fences that Gemini wraps around JSON responses
     let text = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
     text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
     console.log("Gemini cleaned response (first 500 chars):", text.slice(0, 500));
+
+    // Return actual token usage so frontend can calculate accurate cost
+    const usage = data.usageMetadata || {};
     res.json({
-      content: [{ type: "text", text }]
+      content: [{ type: "text", text }],
+      usage: {
+        input_tokens: usage.promptTokenCount || 0,
+        output_tokens: usage.candidatesTokenCount || 0,
+      }
     });
 
   } catch (err) {
+    if (err.name === "AbortError") {
+      console.error("Gemini timeout — request took too long");
+      return res.status(504).json({ error: "Gemini request timed out — try a more specific question or reduce page count." });
+    }
     console.error("Gemini proxy error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
 // ── vault routes ──────────────────────────────────────────────────────────────
 
 app.get("/api/vaults", async (req, res) => {
@@ -244,8 +261,7 @@ app.post("/api/extract-pages", async (req, res) => {
   const pdfBytes = Buffer.from(base64, "base64");
   const pageList = pages.map(Number).filter(p => p > 0).sort((a, b) => a - b);
 
-  // Attempt 1: mupdf — handles compressed object streams that pdf-lib cannot copy
-  // Uses dynamic import() because mupdf is an ES Module
+  // Attempt 1: mupdf
   try {
     const mupdf = await import("mupdf");
     const srcDoc = new mupdf.PDFDocument(pdfBytes);
@@ -253,22 +269,17 @@ app.post("/api/extract-pages", async (req, res) => {
     const validPages = pageList.filter(p => p <= totalPages);
     if (validPages.length === 0) return res.status(400).json({ error: "No valid pages" });
 
-    // Use mupdf merge approach — copy selected pages into a new document
     const outDoc = new mupdf.PDFDocument();
     const graftMap = outDoc.newGraftMap();
     for (const pageNum of validPages) {
-      // Find the page object in the source document
       const pageRef = srcDoc.findPage(pageNum - 1);
-      // Graft (deep copy) the page and all its dependencies into outDoc
       const newPageRef = graftMap.graftObject(pageRef);
-      // Insert the grafted page at the end
       outDoc.insertPage(-1, newPageRef);
     }
     const outPageCount = outDoc.countPages();
     console.log(`mupdf: inserted ${validPages.length} pages, outDoc has ${outPageCount} pages`);
     if (outPageCount === 0) throw new Error("mupdf produced empty document");
     const rawBuffer = outDoc.saveToBuffer("compress,garbage");
-    // rawBuffer is a mupdf Buffer object — convert directly to Node Buffer
     const outBytes = Buffer.from(rawBuffer.asUint8Array());
     console.log(`mupdf extracted ${validPages.length} pages successfully`);
     return res.json({
