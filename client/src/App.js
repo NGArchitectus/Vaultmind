@@ -107,7 +107,11 @@ async function callClaude(messages, systemPrompt, maxTokens = 1000, retries = 2,
     throw new Error(err.error || `API error ${res.status}`);
   }
   const data = await res.json();
-  return data.content.map(b => b.text || "").join("\n");
+  // Return both text and token usage for accurate cost tracking
+  return {
+    text: data.content.map(b => b.text || "").join("\n"),
+    usage: data.usage || { input_tokens: 0, output_tokens: 0 }
+  };
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -486,7 +490,7 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
 
     // First attempt — full PDF in one pass (works for most docs)
     try {
-      const result = await callClaude(
+      const { text: result } = await callClaude(
         [{ role: "user", content: [
           { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 }, title: pdfName },
           { type: "text", text: INDEX_PROMPT }
@@ -524,7 +528,7 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
 For pageHint, use only the page number within this chunk — page 1 is the first page of this chunk, page 2 is the second, up to page ${endPage - startPage}. Ignore all printed page numbers on the pages completely.
 
 Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pageHint": 1}]}`;
-          const result = await callClaude(
+          const { text: result } = await callClaude(
             [{ role: "user", content: [
               { type: "document", source: { type: "base64", media_type: "application/pdf", data: chunkBase64 } },
               { type: "text", text: chunkPrompt }
@@ -548,7 +552,7 @@ Output ONLY valid JSON: {"headings": [{"level": 1, "title": "heading text", "pag
           if (e.message?.includes("503") || e.message?.includes("UNAVAILABLE")) {
             try {
               await new Promise(r => setTimeout(r, 3000));
-              const result2 = await callClaude(
+              const { text: result2 } = await callClaude(
                 [{ role: "user", content: [
                   { type: "document", source: { type: "base64", media_type: "application/pdf", data: chunkBase64 } },
                   { type: "text", text: chunkPrompt }
@@ -731,7 +735,7 @@ Rules:
 - pageHint MUST be a plain integer. Never use "p.12" or "page 12". Use 1 if unknown.
 - Omit "styleNotes", "reason" and "crossRefs" fields entirely — keep JSON compact`;
 
-      const scoringText = await callClaude(
+      const { text: scoringText, usage: scoringUsage } = await callClaude(
         [{ role: "user", content: scoringPrompt }],
         "You are a technical document analyst. Score document sections for relevance using only the text index provided. Return pure JSON only, no markdown.",
         65000,
@@ -1025,7 +1029,7 @@ RULES:
 - Omit citations rather than guess page numbers
 - If pages do not contain enough to answer definitively, state exactly what is missing`;
 
-      const finalAnswer = await callClaude(
+      const { text: finalAnswer, usage: answerUsage } = await callClaude(
         [{ role: "user", content: [...docBlocks, { type: "text", text: answerPrompt }] }],
         `You are an expert building regulations consultant. Answer using ONLY the provided document pages. Always output: (1) ## Summary first, (2) ## Detailed Analysis second, (3) ## Contradictions & Conflicts last. Never change this order. Build on prior conversation context where relevant.`,
         65536
@@ -1037,8 +1041,14 @@ RULES:
       setHistory(prev => [...prev, { vaultId: vault.id, question: q, answer: finalAnswer, timestamp: new Date() }]);
       setConversationHistory(prev => [...prev, { question: q, answer: finalAnswer }]);
 
-      const estimatedTokens = (indexSummary.length + answerPrompt.length + totalPagesExtracted * 500) / 4;
-      const costGBP = (estimatedTokens / 1_000_000) * 3 * 0.79;
+      // Gemini 2.5 Flash pricing (update GEMINI_PRICE_* if rates change)
+      const GEMINI_INPUT_PRICE_USD = 0.15;   // per 1M input tokens
+      const GEMINI_OUTPUT_PRICE_USD = 0.60;  // per 1M output tokens
+      const USD_TO_GBP = 0.79;
+      const totalInput = (scoringUsage?.input_tokens || 0) + (answerUsage?.input_tokens || 0);
+      const totalOutput = (scoringUsage?.output_tokens || 0) + (answerUsage?.output_tokens || 0);
+      const costGBP = ((totalInput / 1_000_000) * GEMINI_INPUT_PRICE_USD + (totalOutput / 1_000_000) * GEMINI_OUTPUT_PRICE_USD) * USD_TO_GBP;
+      console.log(`Token usage — input: ${totalInput}, output: ${totalOutput}, cost: £${costGBP.toFixed(6)}`);
       setCostEst(costGBP);
       setStatusMsg(`Answer ready · Est. cost: ${costGBP < 0.01 ? "< 1p" : costGBP.toFixed(2) + "p"}`);
     } catch (err) {
@@ -1276,11 +1286,7 @@ RULES:
                   {!isRunning && statusMsg && (
                     <div style={{ padding: "8px 24px", borderBottom: "1px solid #b1b4b6", background: "#ffffff", fontSize: 13, color: "#505a5f", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
                       <span>{statusMsg}</span>
-                      {costEst !== null && (
-                        <span style={{ background: costEst < 0.01 ? "#e9f7ef" : "#fff7e6", border: `1px solid ${costEst < 0.01 ? "#00703c" : "#f47738"}`, color: costEst < 0.01 ? "#00703c" : "#f47738", padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>
-                          {costEst < 0.01 ? "✓ Under 1p" : `~${(costEst * 100).toFixed(2)}p`}
-                        </span>
-                      )}
+
                     </div>
                   )}
 
@@ -1351,7 +1357,7 @@ RULES:
                           {isRunning ? <Spinner size={14} /> : "Search"}
                         </button>
                       </div>
-                      {costEst !== null && <p style={{ fontSize: 10, color: "#b0a8a0", marginTop: 6, letterSpacing: "0.04em" }}>Est. cost: {costEst < 0.01 ? "< 1p" : costEst.toFixed(2) + "p"}</p>}
+                      {costEst !== null && <p style={{ fontSize: 10, color: "#b0a8a0", marginTop: 6, letterSpacing: "0.04em" }}>Est. cost: {costEst < 0.01 ? "< 1p" : `${(costEst * 100).toFixed(2)}p`}</p>}
                     </div>
                   )}
                 </div>
