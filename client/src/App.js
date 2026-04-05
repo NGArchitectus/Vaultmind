@@ -67,16 +67,38 @@ async function splitPdfIntoChunks(base64Data, chunkSize) {
 }
 
 async function callClaude(messages, systemPrompt, maxTokens = 1000, retries = 2, model = "gemini-2.5-flash") {
-  const res = await fetch(`${API_BASE}/api/claude`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, messages }),
-  });
+  // 60 second timeout — if Gemini doesn't respond, abort and surface a clean error
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-  // Auto-retry on rate limit with 15 second wait (Gemini recovers faster)
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/claude`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, messages }),
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === "AbortError") {
+      throw new Error("Request timed out — Gemini is experiencing high traffic. Please try again in a moment.");
+    }
+    throw e;
+  }
+  clearTimeout(timeoutId);
+
+  // Auto-retry on rate limit with 15 second wait
   if (res.status === 429 && retries > 0) {
     console.log(`Rate limit hit, waiting 15 seconds before retry (${retries} retries left)…`);
     await new Promise(r => setTimeout(r, 15000));
+    return callClaude(messages, systemPrompt, maxTokens, retries - 1, model);
+  }
+
+  // Retry on timeout/gateway errors
+  if ((res.status === 504 || res.status === 502) && retries > 0) {
+    console.log(`Gateway error ${res.status}, retrying in 5 seconds (${retries} retries left)…`);
+    await new Promise(r => setTimeout(r, 5000));
     return callClaude(messages, systemPrompt, maxTokens, retries - 1, model);
   }
 
