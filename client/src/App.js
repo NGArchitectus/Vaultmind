@@ -1150,6 +1150,36 @@ RULES:
             ))}
           </div>
 
+          {/* Temporary document upload — available to all roles */}
+          <div style={{ borderTop: "1px solid #ddd8d0", padding: "12px 24px" }}>
+            {tempDoc ? (
+              <div style={{ padding: "10px 0" }}>
+                <div style={{ fontSize: 9, color: "#9a9088", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Temporary Document</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#fdf5f3", border: `1px solid ${ARC_TERRACOTTA}`, padding: "8px 10px" }}>
+                  <span style={{ fontSize: 11, color: ARC_TERRACOTTA, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {tempDoc.name}</span>
+                  <button className="btn" onClick={() => setTempDoc(null)} title="Remove"
+                    style={{ background: "none", color: ARC_TERRACOTTA, fontSize: 14, padding: "0 2px", fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>×</button>
+                </div>
+                <p style={{ fontSize: 10, color: "#b0a8a0", marginTop: 6, lineHeight: 1.5, letterSpacing: "0.02em" }}>This document is temporary and will not be saved. It will be included when answering questions.</p>
+              </div>
+            ) : (
+              <div
+                onDragOver={e => { e.preventDefault(); setTempDocDragOver(true); }}
+                onDragLeave={() => setTempDocDragOver(false)}
+                onDrop={e => { e.preventDefault(); setTempDocDragOver(false); const f = e.dataTransfer.files[0]; if (f) loadTempDoc(f); }}
+                onClick={() => tempDocInputRef.current.click()}
+                style={{ padding: "10px 0", cursor: "pointer" }}>
+                <div style={{ fontSize: 9, color: "#9a9088", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Temporary Document</div>
+                <div style={{ border: `1px dashed ${tempDocDragOver ? AD_GREEN : "#ccc"}`, padding: "10px 12px", background: tempDocDragOver ? "#f0f5f6" : "transparent", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, opacity: 0.4 }}>📎</span>
+                  <span style={{ fontSize: 11, color: ARC_NAVY, letterSpacing: "0.01em" }}>Upload a PDF</span>
+                </div>
+                <p style={{ fontSize: 10, color: "#b0a8a0", marginTop: 6, lineHeight: 1.5, letterSpacing: "0.02em" }}>Upload a temporary PDF here to include it in your questions. It will not be saved to the vault.</p>
+                <input ref={tempDocInputRef} type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) loadTempDoc(e.target.files[0]); }} />
+              </div>
+            )}
+          </div>
+
           {isAdmin && (creating ? (
             <div style={{ padding: "16px 24px", borderTop: "1px solid #ddd8d0", background: "#f5f3f0" }}>
               <label style={{ fontSize: 10, fontWeight: 600, color: "#9a9088", display: "block", marginBottom: 8, letterSpacing: "0.08em", textTransform: "uppercase" }}>Vault Name</label>
@@ -1194,29 +1224,7 @@ RULES:
                     </p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    {/* Temp doc button */}
-                    <div style={{ position: "relative" }}>
-                      {tempDoc ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fdf5f3", border: `1px solid ${ARC_TERRACOTTA}`, padding: "7px 14px" }}>
-                          <span style={{ fontSize: 11, color: ARC_TERRACOTTA, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "0.02em" }}>📄 {tempDoc.name}</span>
-                          <button className="btn" onClick={() => setTempDoc(null)} title="Remove temporary document"
-                            style={{ background: "none", color: "#6f777b", fontSize: 16, padding: "0 2px", fontWeight: 700, lineHeight: 1 }}
-                            onMouseEnter={e => e.target.style.color = "#d4351c"}
-                            onMouseLeave={e => e.target.style.color = "#6f777b"}>×</button>
-                        </div>
-                      ) : (
-                        <div
-                          onDragOver={e => { e.preventDefault(); setTempDocDragOver(true); }}
-                          onDragLeave={() => setTempDocDragOver(false)}
-                          onDrop={e => { e.preventDefault(); setTempDocDragOver(false); const f = e.dataTransfer.files[0]; if (f) loadTempDoc(f); }}
-                          onClick={() => tempDocInputRef.current.click()}
-                          style={{ border: `1px dashed ${tempDocDragOver ? AD_GREEN : "#ccc"}`, padding: "7px 16px", cursor: "pointer", background: tempDocDragOver ? "#f0f5f6" : "transparent", display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11, color: "#9a9088", letterSpacing: "0.03em" }}>📎 Temporary document</span>
-                          <span style={{ fontSize: 10, color: "#b0a8a0", letterSpacing: "0.03em" }}>— not saved</span>
-                          <input ref={tempDocInputRef} type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) loadTempDoc(e.target.files[0]); }} />
-                        </div>
-                      )}
-                    </div>
+
                     {pdfs.length > 0 && isAdmin && (
                       <button className="btn" onClick={indexVault} disabled={isRunning}
                         style={{ background: vaultIndex ? "transparent" : ARC_NAVY, color: vaultIndex ? ARC_NAVY : "#ffffff", border: `1px solid ${ARC_NAVY}`, padding: "8px 20px", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>
