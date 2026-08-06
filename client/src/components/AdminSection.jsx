@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { api } from "../api/client";
 import { Spinner } from "./common/Spinner";
 import { ARC_TERRACOTTA, DESIGN_SHELL, DESIGN_GROUND, DESIGN_GOLD } from "../constants";
+import QaLogPanel from "./QaLogPanel";
 
 const DEFAULT_COLOURS = {
   header:      "#1a2332",
@@ -655,7 +656,7 @@ export default function AdminSection() {
 
       {/* ── Tab bar ───────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", borderBottom: "2px solid #e8e0d5", marginBottom: 28, gap: 4 }}>
-        {[["users","Users"],["notifications","Notifications"],["quiz","Quiz"],["branding","Branding"],["archisync","ArchiSync"]].map(([key, label]) => (
+        {[["users","Users"],["notifications","Notifications"],["qalog","Q&A Log"],["quiz","Quiz"],["branding","Branding"],["archisync","ArchiSync"]].map(([key, label]) => (
           <button key={key} onClick={() => setAdminTab(key)}
             style={{ fontSize: 12, padding: "10px 18px", border: "none", background: "none", cursor: "pointer",
               color: adminTab === key ? DESIGN_SHELL : "#9a9088",
@@ -782,6 +783,8 @@ export default function AdminSection() {
       </>)}
 
       {adminTab === "notifications" && (<><NotificationSettings /><TimesheetReminderSettings /><HrReportSettings /></>)}
+
+      {adminTab === "qalog" && <QaLogPanel />}
 
       {adminTab === "branding" && (<>
       {/* ── Practice Logo ─────────────────────────────────────────────────── */}

@@ -146,6 +146,11 @@ Specs/plans: `docs/superpowers/specs/2026-06-23-timesheets-expenses-prelaunch-tw
 - **Refactor note:** the email-send loop was extracted from `runTimesheetReminders` into `sendReminderEmails(recipients)` (`helpers/schedulers.js`); `runTimesheetReminders` now composes it and the Friday scheduler path is behaviour-identical.
 - **Caution:** staging shares the production DB and real staff emails — the remind button on staging emails real people. No SQL. Spec discussion was verbal (visual-companion brainstorm); no spec doc by Nathan's choice.
 
+### Admin Q&A Log (2026-07-27)
+
+- **What:** Admin section → new **Q&A Log** tab (admin-only; HR excluded): vault Q&A questions grouped by person (only people who have asked), expandable per person, newest activity first, with a question/name search box. Read-only **usage oversight**, explicitly NOT an audit trail: it reads the existing `vault_question_history` table, so re-asked questions keep only the latest date (the POST handler dedupes) and anything a user deleted from their own sidebar history is gone here too. Coverage: vault Q&A only (Projects Q&A bar / agreement / email asks are not persisted anywhere — extend by adding the same fire-and-forget POST pattern if ever wanted).
+- **Server:** `GET /api/admin/question-log` (`requireAdmin`) in `routes/admin.js` — latest 500 history rows + `listUsers` names → `groupQuestionsByPerson` in **`lib/questionLog.js`** (node --test covered). **Client:** `components/QaLogPanel.jsx`, wired as the `qalog` tab in `AdminSection.jsx`. **No SQL, no pipeline changes, no new writes** — the asking flow is untouched.
+
 ---
 
 ## Outstanding issues (as of 2026-06-19)
