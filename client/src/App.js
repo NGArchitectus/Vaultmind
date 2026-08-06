@@ -1589,7 +1589,7 @@ const { text: scoringText, usage: scoringUsage } = await withRetry(
                           <div key={pdf.id} style={{ padding: "8px 12px", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid #e4e4e8" }}>
                             <span style={{ fontSize: 8, color: isIndexed ? VAULT_FULL : "#c0b8b0", flexShrink: 0 }}>{isIndexed ? "●" : "○"}</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, color: DESIGN_TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "0.01em" }}>{pdf.name}</div>
+                              <div style={{ fontSize: 11, color: DESIGN_TEXT, overflowWrap: "anywhere", letterSpacing: "0.01em" }}>{pdf.name}</div>
                               <div style={{ fontSize: 9, color: "#b0a8a0", marginTop: 1 }}>{(pdf.size / 1024).toFixed(0)} KB</div>
                             </div>
                             {isAdmin && <>
