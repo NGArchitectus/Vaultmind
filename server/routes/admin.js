@@ -7,8 +7,33 @@ const { supabase, r2, BUCKET } = require("../helpers/clients");
 const { streamToBuffer } = require("../helpers/r2");
 const { serverError } = require("../helpers/serverError");
 const { generatePassword } = require("../lib/passwordGen");
+const { groupQuestionsByPerson } = require("../lib/questionLog");
 
 const router = express.Router();
+
+// ── Q&A usage log ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/question-log — vault Q&A questions grouped by person, admin only.
+// Reads the existing vault_question_history table (usage oversight, not an audit
+// trail: users can clear their own history and re-asks keep only the latest date).
+router.get("/api/admin/question-log", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [{ data: rows, error }, { data: usersData }] = await Promise.all([
+      supabase
+        .from("vault_question_history")
+        .select("user_id, vault_name, question, created_at")
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase.auth.admin.listUsers(),
+    ]);
+    if (error) throw error;
+    const nameById = {};
+    for (const u of usersData?.users || []) nameById[u.id] = u.user_metadata?.full_name || u.email || u.id;
+    res.json({ people: groupQuestionsByPerson(rows || [], nameById) });
+  } catch (err) {
+    return serverError(res, err, "GET /api/admin/question-log");
+  }
+});
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 
