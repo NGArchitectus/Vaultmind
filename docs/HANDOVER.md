@@ -49,8 +49,9 @@ Use `text=` not `answer=`.
 ### Supabase RLS policy pattern
 Always: `USING (true) WITH CHECK (true)`. Never: `WITH CHECK (auth.role() = 'authenticated')`.
 
-### Route ordering in server/index.js
-Specific routes before wildcard `:id` routes. E.g. `/api/expenses/settings` before `/api/expenses/:id`.
+### Route ordering in server/routes/*
+Specific routes before wildcard `:id`/`*` routes. E.g. `/api/expenses/settings` before `/api/expenses/:id`.
+**Express `*` matches ACROSS slashes** — a wildcard route like `DELETE /api/vaults/*` also matches `/api/vaults/X/pdfs/f.pdf`. Second latent instance of this class fixed 2026-07-20: vault file-delete always hit the wildcard vault-delete first (silently no-op'd pre-audit; honest 404 "Not found" after the 2026-06-24 audit guard) — fixed by registering `DELETE /api/vaults/*/pdfs/:filename` **before** `DELETE /api/vaults/*` in `routes/vaults.js` (guard kept as safety net). Registration order is checkable: `require("./routes/vaults").stack` layer order is match order.
 
 ### react-pdf v10 gotchas (PDFAnnotator.jsx)
 - Worker must use `.mjs` extension

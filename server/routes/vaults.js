@@ -128,8 +128,23 @@ router.patch("/api/vaults/*", requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/vaults/:vault/pdfs/:filename — MUST be registered before the
+// wildcard DELETE /api/vaults/* below, or that route swallows file deletes
+// (its `*` matches across slashes). Specific before wildcard, always.
+router.delete("/api/vaults/*/pdfs/:filename", requireAuth, async (req, res) => {
+  const vaultPath = sanitizeVaultPath(req.params[0]);
+  const { filename } = req.params;
+  try {
+    await r2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: `${vaultPath}/${filename}` }));
+    res.json({ deleted: true });
+  } catch (err) {
+    return serverError(res, err, req.path);
+  }
+});
+
 // DELETE /api/vaults/:vault — delete a vault and all its contents
 router.delete("/api/vaults/*", requireAuth, async (req, res) => {
+  // Safety net: never treat a file-delete path as a vault delete (see ordering note above).
   if (req.params[0].includes("/pdfs/")) return res.status(404).json({ error: "Not found" });
 
   const vaultPath = sanitizeVaultPath(req.params[0]);
@@ -212,18 +227,6 @@ router.get("/api/vaults/*/pdfs/:filename", requireAuth, async (req, res) => {
     const result = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `${vaultPath}/${filename}` }));
     const buffer = await streamToBuffer(result.Body);
     res.json({ base64: buffer.toString("base64"), name: filename });
-  } catch (err) {
-    return serverError(res, err, req.path);
-  }
-});
-
-// DELETE /api/vaults/:vault/pdfs/:filename
-router.delete("/api/vaults/*/pdfs/:filename", requireAuth, async (req, res) => {
-  const vaultPath = sanitizeVaultPath(req.params[0]);
-  const { filename } = req.params;
-  try {
-    await r2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: `${vaultPath}/${filename}` }));
-    res.json({ deleted: true });
   } catch (err) {
     return serverError(res, err, req.path);
   }
